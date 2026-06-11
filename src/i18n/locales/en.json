@@ -82,6 +82,41 @@
     "roleEmployee": "Employee",
     "roleAdmin": "Admin"
   },
+  "register": {
+    "title": "Create Account",
+    "subtitle": "Register with your enterprise email",
+    "emailLabel": "Enterprise Email",
+    "emailPlaceholder": "Enter your enterprise email",
+    "usernameLabel": "Username",
+    "usernamePlaceholder": "3-30 characters, letters, numbers, hyphens, underscores",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "8-64 characters with mixed case, number, special char",
+    "confirmPasswordLabel": "Confirm Password",
+    "confirmPasswordPlaceholder": "Re-enter your password",
+    "submitBtn": "Register",
+    "hasAccount": "Already have an account?",
+    "signIn": "Sign In",
+    "success": "Registration successful! Redirecting to login...",
+    "errors": {
+      "emailRequired": "Email is required",
+      "emailInvalid": "Only enterprise email addresses are accepted",
+      "usernameRequired": "Username is required",
+      "usernameInvalid": "Username must be 3-30 characters: letters, numbers, hyphens, or underscores",
+      "passwordRequired": "Password is required",
+      "passwordWeak": "Password does not meet strength requirements",
+      "confirmRequired": "Please confirm your password",
+      "confirmMismatch": "Passwords do not match",
+      "emailExists": "This email is already registered",
+      "networkError": "Connection error. Please try again.",
+      "serverError": "Server error. Please try again later.",
+      "timeout": "Request timed out. Please try again."
+    },
+    "strength": {
+      "weak": "Weak",
+      "medium": "Medium",
+      "strong": "Strong"
+    }
+  },
   "notFound": {
     "title": "404",
     "message": "Sorry, the page you visited does not exist.",

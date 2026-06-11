@@ -27,22 +27,47 @@
 src/
 ├── components/
 │   ├── AvatarMenu.tsx              # 头像下拉菜单（切换语言/主题/退出）
+│   ├── PageFallback.tsx            # 路由懒加载时的加载占位
 │   └── Layout/
 │       ├── EmployeeLayout.tsx      # 员工端布局（顶部导航栏）
-│       └── AdminLayout.tsx         # 管理端布局（侧边栏导航）
+│       ├── AdminLayout.tsx         # 管理端布局（侧边栏导航）
+│       ├── AppHeader.tsx           # 顶部导航栏
+│       ├── Sidebar.tsx             # 管理端侧边栏
+│       └── index.tsx
 ├── pages/
-│   ├── Login/index.tsx             # 登录页
-│   ├── ShopHome/index.tsx          # 员工商城首页
-│   ├── Dashboard/index.tsx         # 管理员仪表盘
-│   └── NotFound/index.tsx          # 404 页面
+│   ├── Login/                      # 登录页
+│   ├── NotFound/                   # 404 页面
+│   │
+│   │   # 员工端
+│   ├── ShopHome/                   # 商城首页
+│   ├── ProductDetail/              # 商品详情
+│   ├── ConfirmRedemption/          # 确认兑换
+│   ├── DeliveryInfo/               # 收货信息
+│   ├── RedemptionSuccess/          # 兑换成功
+│   ├── RedemptionHistory/          # 兑换记录
+│   ├── OrderDetail/                # 订单详情
+│   ├── PointsCenter/               # 积分中心
+│   │
+│   │   # 管理端
+│   ├── Dashboard/                  # 仪表盘
+│   ├── AdminProducts/              # 商品管理
+│   ├── AdminProductDetail/         # 商品详情（管理）
+│   ├── AdminEditProduct/           # 新增 / 编辑商品
+│   ├── AdminCategories/            # 分类管理
+│   ├── AdminPoints/                # 积分管理
+│   ├── AdminOrders/                # 兑换订单
+│   ├── AdminOrderDetail/           # 订单详情（管理）
+│   ├── AdminUsers/                 # 用户管理
+│   ├── AdminUserPoints/            # 用户积分明细
+│   └── AdminTeam/                  # 团队成员
 ├── router/
-│   ├── index.tsx                   # 路由配置
+│   ├── index.tsx                   # 路由配置（页面按路由懒加载）
 │   └── AuthGuard.tsx               # 路由守卫（角色鉴权）
 ├── store/
 │   ├── useAuthStore.ts             # 认证状态（用户信息、登录/登出）
 │   └── useAppStore.ts              # 应用状态（主题、语言偏好）
 ├── services/
-│   └── request.ts                  # Axios 实例及拦截器
+│   └── request.ts                  # Axios 实例及拦截器（待接入）
 ├── i18n/
 │   ├── index.ts                    # i18next 配置
 │   └── locales/
@@ -50,6 +75,10 @@ src/
 │       └── en.json                 # 英文翻译
 ├── theme/
 │   └── index.ts                    # MUI 主题工厂（亮色/暗色）
+├── types/
+│   └── product.ts                  # 商品相关类型定义
+├── utils/
+│   └── validation.ts               # 表单校验工具（含单元测试）
 ├── App.tsx                         # 根组件
 └── main.tsx                        # 入口文件
 ```
@@ -151,11 +180,20 @@ setLanguage(lang)           // 设置语言
 
 两个 Store 均通过 `zustand/middleware/persist` 持久化到 localStorage。
 
+## 测试与质量
+
+```bash
+npm run lint    # ESLint 检查
+npm run test    # 单元测试（Vitest）
+npm run build   # 类型检查 + 生产构建
+```
+
+- 生产构建已通过第三方库分包（`react` / `mui` / `i18n`）与路由级懒加载进行代码分割，无超大 chunk 告警。
+
 ## 后续开发
 
-- [ ] 接入后端 API，替换 Mock 数据
-- [ ] 完成商品管理、分类管理等管理端 CRUD 页面
-- [ ] 完成员工端兑换记录、积分中心页面
-- [ ] 商品详情页与兑换流程
+- [ ] 接入后端 API，替换各页面的 Mock 数据（`services/request.ts` 已就绪）
+- [ ] 各管理端页面的增删改操作接入真实接口
+- [ ] 商品兑换流程串联真实订单接口
 - [ ] 用户注册功能
 - [ ] 响应式移动端适配

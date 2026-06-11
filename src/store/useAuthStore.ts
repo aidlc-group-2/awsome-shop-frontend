@@ -44,7 +44,7 @@ export const useAuthStore = create<AuthState>()(
         // TODO: replace with real API call
         const mockUser = MOCK_USERS[username];
         if (mockUser && mockUser.password === password) {
-          const { password: _, ...userInfo } = mockUser;
+          const { password: _password, ...userInfo } = mockUser;
           set({ user: userInfo, isAuthenticated: true });
           return true;
         }
