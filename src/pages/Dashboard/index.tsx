@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -10,43 +11,47 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Link from '@mui/material/Link';
 import Chip from '@mui/material/Chip';
-import Inventory2Icon from '@mui/icons-material/Inventory2';
-import GroupIcon from '@mui/icons-material/Group';
+import Alert from '@mui/material/Alert';
+import type { SvgIconComponent } from '@mui/icons-material';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import TollIcon from '@mui/icons-material/Toll';
-const METRICS = [
+import { adminExchangeStats, type ExchangeStatsDTO } from '../../services/order';
+
+interface MetricCardConfig {
+  key: keyof ExchangeStatsDTO;
+  label: string;
+  icon: SvgIconComponent;
+  iconColor: string;
+  iconBg: string;
+}
+
+const METRIC_CARDS: MetricCardConfig[] = [
   {
-    key: 'totalProducts',
-    value: '128',
-    change: '+12 本月新增',
-    changeColor: '#16A34A',
-    icon: Inventory2Icon,
+    key: 'totalCount',
+    label: '总订单数',
+    icon: ShoppingCartIcon,
     iconColor: '#2563EB',
     iconBg: '#EFF6FF',
   },
   {
-    key: 'totalUsers',
-    value: '356',
-    change: '+28 本月新增',
-    changeColor: '#16A34A',
-    icon: GroupIcon,
-    iconColor: '#16A34A',
-    iconBg: '#DCFCE7',
-  },
-  {
-    key: 'monthlyRedemptions',
-    value: '89',
-    change: '+15 较上月',
-    changeColor: '#D97706',
-    icon: ShoppingCartIcon,
+    key: 'pendingDeliveryCount',
+    label: '待发货',
+    icon: LocalShippingIcon,
     iconColor: '#D97706',
     iconBg: '#FEF3C7',
   },
   {
-    key: 'pointsCirculation',
-    value: '52,800',
-    change: '本月发放总量',
-    changeColor: '#64748B',
+    key: 'completedCount',
+    label: '已完成',
+    icon: CheckCircleIcon,
+    iconColor: '#16A34A',
+    iconBg: '#DCFCE7',
+  },
+  {
+    key: 'totalPointsConsumed',
+    label: '总积分消耗',
     icon: TollIcon,
     iconColor: '#7C3AED',
     iconBg: '#EDE9FE',
@@ -79,6 +84,30 @@ const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: str
 export default function Dashboard() {
   const { t } = useTranslation();
 
+  const [stats, setStats] = useState<ExchangeStatsDTO | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    adminExchangeStats()
+      .then((data) => {
+        if (mounted) {
+          setStats(data);
+          setError(null);
+        }
+      })
+      .catch((err: Error) => {
+        if (mounted) setError(err.message);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px', p: '32px' }}>
       {/* Dashboard Header */}
@@ -86,10 +115,17 @@ export default function Dashboard() {
         {t('admin.dashboard')}
       </Typography>
 
+      {error && (
+        <Alert severity="error" onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
+
       {/* Metric Cards - design: gap 20 */}
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-        {METRICS.map((metric) => {
+        {METRIC_CARDS.map((metric) => {
           const IconComp = metric.icon;
+          const value = stats ? stats[metric.key].toLocaleString() : loading ? '...' : '—';
           return (
             <Paper
               key={metric.key}
@@ -106,7 +142,7 @@ export default function Dashboard() {
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography sx={{ fontSize: 13, color: 'text.secondary' }}>
-                  {t(`admin.metrics.${metric.key}`)}
+                  {metric.label}
                 </Typography>
                 <Box
                   sx={{
@@ -123,10 +159,7 @@ export default function Dashboard() {
                 </Box>
               </Box>
               <Typography sx={{ fontSize: 28, fontWeight: 700, color: 'text.primary' }}>
-                {metric.value}
-              </Typography>
-              <Typography sx={{ fontSize: 12, color: metric.changeColor }}>
-                {metric.change}
+                {value}
               </Typography>
             </Paper>
           );

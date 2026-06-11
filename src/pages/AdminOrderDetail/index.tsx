@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -5,10 +6,23 @@ import Paper from '@mui/material/Paper';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import Link from '@mui/material/Link';
-import HeadphonesIcon from '@mui/icons-material/Headphones';
-import CancelIcon from '@mui/icons-material/Cancel';
+import Alert from '@mui/material/Alert';
+import CircularProgress from '@mui/material/CircularProgress';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
 import PrintIcon from '@mui/icons-material/Print';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
+import RedeemIcon from '@mui/icons-material/Redeem';
+import {
+  adminCompleteExchange,
+  adminGetExchange,
+  adminShipExchange,
+  type ExchangeRecordDTO,
+} from '../../services/order';
 
 // Theme colors
 const COLORS = {
@@ -24,49 +38,24 @@ const COLORS = {
   error: '#DC2626',
 };
 
-type OrderStatus = 'pending' | 'completed' | 'shipping' | 'cancelled';
-
-const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: string }> = {
-  pending: { label: '待发货', color: '#D97706', bg: '#FFF7ED' },
-  completed: { label: '已完成', color: '#166534', bg: '#DCFCE7' },
-  shipping: { label: '配送中', color: '#2563EB', bg: '#DBEAFE' },
-  cancelled: { label: '已取消', color: '#DC2626', bg: '#FEE2E2' },
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  PENDING_SHIPMENT: { label: '待发货', color: '#D97706', bg: '#FFF7ED' },
+  SHIPPED: { label: '已发货', color: '#2563EB', bg: '#DBEAFE' },
+  COMPLETED: { label: '已完成', color: '#166534', bg: '#DCFCE7' },
+  CANCELLED: { label: '已取消', color: '#DC2626', bg: '#FEE2E2' },
 };
 
-// Order data (hardcoded from design)
-const ORDER = {
-  id: 'EX20260208001',
-  status: 'pending' as OrderStatus,
-  product: {
-    name: 'Sony WH-1000XM5 降噪耳机',
-    spec: '规格：黑色 | 类目：数码电子 - 耳机音响',
-    code: '商品编号：PRD20260101005',
-    points: '2,580',
-  },
-  points: {
-    product: '2,580',
-    shipping: '0',
-    total: '2,580 积分',
-    balance: '5,420 积分',
-  },
-  employee: {
-    name: '张三',
-    empNo: 'EMP20230156',
-    department: '技术研发部',
-    contact: 'zhangsan@company.com',
-  },
-  orderInfo: [
-    { label: '订单编号', value: 'EX20260208001' },
-    { label: '下单时间', value: '2026-02-08 14:25:00' },
-    { label: '订单来源', value: 'PC端' },
-    { label: '备注', value: '无', muted: true },
-  ],
-  delivery: [
-    { label: '收货人', value: '张三' },
-    { label: '联系电话', value: '138****5678' },
-    { label: '收货地址', value: '北京市海淀区中关村科技园 A座 12层' },
-  ],
+const FALLBACK_STATUS = { label: '未知', color: '#64748B', bg: '#F1F5F9' };
+
+const PRODUCT_TYPE_LABEL: Record<'PHYSICAL' | 'VIRTUAL', string> = {
+  PHYSICAL: '实物商品',
+  VIRTUAL: '虚拟商品',
 };
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '-';
+  return value.replace('T', ' ').slice(0, 19);
+}
 
 interface TimelineItem {
   title: string;
@@ -74,29 +63,59 @@ interface TimelineItem {
   time: string;
   active?: boolean;
   badge?: string;
-  last?: boolean;
 }
 
-const TIMELINE: TimelineItem[] = [
-  {
-    title: '待发货',
-    desc: '订单已确认，等待仓库发货',
-    time: '2026-02-08 14:30:00',
-    active: true,
-    badge: '当前',
-  },
-  {
-    title: '订单确认',
-    desc: '员工已确认兑换，积分已扣除',
-    time: '2026-02-08 14:28:15',
-  },
-  {
+function buildTimeline(record: ExchangeRecordDTO): TimelineItem[] {
+  if (record.status === 'CANCELLED') {
+    return [
+      {
+        title: '已取消',
+        desc: '订单已取消，积分已退回',
+        time: formatDateTime(record.updatedAt),
+        active: true,
+        badge: '当前',
+      },
+      {
+        title: '提交兑换',
+        desc: '员工提交兑换申请',
+        time: formatDateTime(record.exchangeTime),
+      },
+    ];
+  }
+
+  const stepIndex =
+    record.status === 'COMPLETED' ? 3 : record.status === 'SHIPPED' ? 2 : 1;
+
+  const steps: TimelineItem[] = [
+    {
+      title: '待发货',
+      desc: '订单已确认，等待仓库发货',
+      time: formatDateTime(record.exchangeTime),
+    },
+    {
+      title: '已发货',
+      desc: '商品已发出，等待签收',
+      time: stepIndex >= 2 ? formatDateTime(record.updatedAt) : '',
+    },
+    {
+      title: '已完成',
+      desc: '订单已完成',
+      time: stepIndex >= 3 ? formatDateTime(record.updatedAt) : '',
+    },
+  ];
+
+  // 仅保留已到达的步骤，最新的在最上方
+  const reached = steps.slice(0, stepIndex).reverse();
+  if (reached.length > 0) {
+    reached[0] = { ...reached[0], active: true, badge: '当前' };
+  }
+  reached.push({
     title: '提交兑换',
     desc: '员工提交兑换申请',
-    time: '2026-02-08 14:25:00',
-    last: true,
-  },
-];
+    time: formatDateTime(record.exchangeTime),
+  });
+  return reached;
+}
 
 // Reusable card wrapper - design: bg-white, radius 12, border border-light, padding 24
 function SectionCard({ title, gap, children }: { title: string; gap: number; children: React.ReactNode }) {
@@ -143,14 +162,115 @@ function InfoRow({ label, value, muted }: { label: string; value: string; muted?
   );
 }
 
+type PendingAction = 'ship' | 'complete';
+
 export default function AdminOrderDetail() {
   const navigate = useNavigate();
-  useParams();
+  const { id } = useParams();
 
-  const statusCfg = STATUS_CONFIG[ORDER.status];
+  const [record, setRecord] = useState<ExchangeRecordDTO | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // 触发详情重新加载（在事件处理器中调用）
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const numericId = Number(id);
+    if (!id || Number.isNaN(numericId)) {
+      Promise.resolve().then(() => {
+        if (cancelled) return;
+        setError('无效的订单ID');
+        setLoading(false);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    adminGetExchange(numericId)
+      .then((data) => {
+        if (cancelled) return;
+        setRecord(data);
+        setError(null);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, refreshKey]);
+
+  const confirmAction = () => {
+    if (!record || !pendingAction) return;
+    setSubmitting(true);
+    const action =
+      pendingAction === 'ship'
+        ? adminShipExchange(record.id)
+        : adminCompleteExchange(record.id);
+    action
+      .then(() => {
+        setPendingAction(null);
+        setError(null);
+        setRefreshKey((k) => k + 1);
+      })
+      .catch((err: Error) => {
+        setPendingAction(null);
+        setError(err.message);
+      })
+      .finally(() => setSubmitting(false));
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: '80px' }}>
+        <CircularProgress size={32} />
+      </Box>
+    );
+  }
+
+  if (!record) {
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: '16px', p: '32px' }}>
+        <Alert severity="error">{error ?? '未找到该订单'}</Alert>
+        <Box>
+          <Button
+            variant="outlined"
+            onClick={() => navigate('/admin/orders')}
+            sx={{
+              textTransform: 'none',
+              fontSize: 13,
+              color: COLORS.textPrimary,
+              borderColor: COLORS.border,
+              borderRadius: '8px',
+            }}
+          >
+            返回兑换记录
+          </Button>
+        </Box>
+      </Box>
+    );
+  }
+
+  const statusCfg = STATUS_CONFIG[record.status] ?? FALLBACK_STATUS;
+  const timeline = buildTimeline(record);
+  const ProductIcon = record.productType === 'VIRTUAL' ? RedeemIcon : Inventory2Icon;
+  const totalPoints = record.pointsCost.toLocaleString();
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px', p: '32px' }}>
+      {error && (
+        <Alert severity="error" onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
+
       {/* Page header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         {/* Left: breadcrumb + title */}
@@ -169,7 +289,7 @@ export default function AdminOrderDetail() {
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Typography sx={{ fontSize: 22, fontWeight: 700, color: COLORS.textPrimary }}>
-              {ORDER.id}
+              {record.orderNo}
             </Typography>
             <Chip
               label={statusCfg.label}
@@ -190,23 +310,6 @@ export default function AdminOrderDetail() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Button
             variant="outlined"
-            startIcon={<CancelIcon sx={{ fontSize: 18 }} />}
-            sx={{
-              textTransform: 'none',
-              fontSize: 13,
-              fontWeight: 500,
-              color: COLORS.error,
-              borderColor: COLORS.error,
-              borderRadius: '8px',
-              px: '16px',
-              py: '8px',
-              '&:hover': { borderColor: COLORS.error, bgcolor: '#FEF2F2' },
-            }}
-          >
-            取消订单
-          </Button>
-          <Button
-            variant="outlined"
             startIcon={<PrintIcon sx={{ fontSize: 18 }} />}
             sx={{
               textTransform: 'none',
@@ -222,23 +325,46 @@ export default function AdminOrderDetail() {
           >
             打印详情
           </Button>
-          <Button
-            variant="contained"
-            startIcon={<LocalShippingIcon sx={{ fontSize: 18 }} />}
-            sx={{
-              textTransform: 'none',
-              fontSize: 13,
-              fontWeight: 600,
-              bgcolor: COLORS.primary,
-              borderRadius: '8px',
-              px: '16px',
-              py: '8px',
-              boxShadow: 'none',
-              '&:hover': { bgcolor: COLORS.primaryHover, boxShadow: 'none' },
-            }}
-          >
-            修改发货状态
-          </Button>
+          {record.status === 'PENDING_SHIPMENT' && (
+            <Button
+              variant="contained"
+              startIcon={<LocalShippingIcon sx={{ fontSize: 18 }} />}
+              onClick={() => setPendingAction('ship')}
+              sx={{
+                textTransform: 'none',
+                fontSize: 13,
+                fontWeight: 600,
+                bgcolor: COLORS.primary,
+                borderRadius: '8px',
+                px: '16px',
+                py: '8px',
+                boxShadow: 'none',
+                '&:hover': { bgcolor: COLORS.primaryHover, boxShadow: 'none' },
+              }}
+            >
+              发货
+            </Button>
+          )}
+          {record.status === 'SHIPPED' && (
+            <Button
+              variant="contained"
+              startIcon={<CheckCircleIcon sx={{ fontSize: 18 }} />}
+              onClick={() => setPendingAction('complete')}
+              sx={{
+                textTransform: 'none',
+                fontSize: 13,
+                fontWeight: 600,
+                bgcolor: '#16A34A',
+                borderRadius: '8px',
+                px: '16px',
+                py: '8px',
+                boxShadow: 'none',
+                '&:hover': { bgcolor: '#15803D', boxShadow: 'none' },
+              }}
+            >
+              完成订单
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -261,22 +387,22 @@ export default function AdminOrderDetail() {
                   flexShrink: 0,
                 }}
               >
-                <HeadphonesIcon sx={{ fontSize: 36, color: COLORS.primary }} />
+                <ProductIcon sx={{ fontSize: 36, color: COLORS.primary }} />
               </Box>
               <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <Typography sx={{ fontSize: 15, fontWeight: 600, color: COLORS.textPrimary }}>
-                  {ORDER.product.name}
+                  {record.productName}
                 </Typography>
                 <Typography sx={{ fontSize: 13, color: COLORS.textSecondary }}>
-                  {ORDER.product.spec}
+                  {record.productDesc ?? '-'}
                 </Typography>
                 <Typography sx={{ fontSize: 12, color: COLORS.textDisabled }}>
-                  {ORDER.product.code}
+                  {`商品编号：${record.productId} | 类型：${PRODUCT_TYPE_LABEL[record.productType]} | 数量：${record.quantity}`}
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0 }}>
                 <Typography sx={{ fontSize: 20, fontWeight: 700, color: COLORS.primary }}>
-                  {ORDER.product.points}
+                  {totalPoints}
                 </Typography>
                 <Typography sx={{ fontSize: 12, color: COLORS.textSecondary }}>积分</Typography>
               </Box>
@@ -285,21 +411,15 @@ export default function AdminOrderDetail() {
 
           {/* Points detail */}
           <SectionCard title="积分明细" gap={16}>
-            <InfoRow label="商品积分" value={ORDER.points.product} />
-            <InfoRow label="运费积分" value={ORDER.points.shipping} />
+            <InfoRow label="商品积分" value={totalPoints} />
+            <InfoRow label="兑换数量" value={String(record.quantity)} />
             <Box sx={{ height: '1px', bgcolor: COLORS.borderLight, width: '100%' }} />
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography sx={{ fontSize: 14, fontWeight: 600, color: COLORS.textPrimary }}>
                 合计消耗
               </Typography>
               <Typography sx={{ fontSize: 16, fontWeight: 700, color: COLORS.primary }}>
-                {ORDER.points.total}
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography sx={{ fontSize: 12, color: COLORS.textSecondary }}>兑换后余额</Typography>
-              <Typography sx={{ fontSize: 12, color: COLORS.textSecondary }}>
-                {ORDER.points.balance}
+                {`${totalPoints} 积分`}
               </Typography>
             </Box>
           </SectionCard>
@@ -307,12 +427,8 @@ export default function AdminOrderDetail() {
           {/* Employee info */}
           <SectionCard title="兑换员工" gap={16}>
             <Box sx={{ display: 'flex', gap: '16px' }}>
-              <EmployeeField label="员工姓名" value={ORDER.employee.name} />
-              <EmployeeField label="工号" value={ORDER.employee.empNo} />
-            </Box>
-            <Box sx={{ display: 'flex', gap: '16px' }}>
-              <EmployeeField label="所属部门" value={ORDER.employee.department} />
-              <EmployeeField label="联系方式" value={ORDER.employee.contact} />
+              <EmployeeField label="员工姓名" value={record.employeeName} />
+              <EmployeeField label="用户ID" value={String(record.userId)} />
             </Box>
           </SectionCard>
         </Box>
@@ -322,69 +438,134 @@ export default function AdminOrderDetail() {
           {/* Status timeline */}
           <SectionCard title="状态记录" gap={20}>
             <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-              {TIMELINE.map((item, idx) => (
-                <Box key={idx} sx={{ display: 'flex', gap: '14px' }}>
-                  {/* Marker column */}
-                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <Box
-                      sx={{
-                        width: 12,
-                        height: 12,
-                        borderRadius: '6px',
-                        bgcolor: item.active ? COLORS.primary : '#D1D5DB',
-                        border: item.active ? '3px solid #DBEAFE' : 'none',
-                        flexShrink: 0,
-                      }}
-                    />
-                    {!item.last && <Box sx={{ width: 2, height: 40, bgcolor: '#E5E7EB' }} />}
-                  </Box>
-                  {/* Content */}
-                  <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px', pb: item.last ? 0 : '4px' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Typography
+              {timeline.map((item, idx) => {
+                const isLast = idx === timeline.length - 1;
+                return (
+                  <Box key={idx} sx={{ display: 'flex', gap: '14px' }}>
+                    {/* Marker column */}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <Box
                         sx={{
-                          fontSize: 13,
-                          fontWeight: item.active ? 600 : 500,
-                          color: item.active ? COLORS.primary : COLORS.textPrimary,
+                          width: 12,
+                          height: 12,
+                          borderRadius: '6px',
+                          bgcolor: item.active ? COLORS.primary : '#D1D5DB',
+                          border: item.active ? '3px solid #DBEAFE' : 'none',
+                          flexShrink: 0,
                         }}
-                      >
-                        {item.title}
+                      />
+                      {!isLast && <Box sx={{ width: 2, height: 40, bgcolor: '#E5E7EB' }} />}
+                    </Box>
+                    {/* Content */}
+                    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px', pb: isLast ? 0 : '4px' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Typography
+                          sx={{
+                            fontSize: 13,
+                            fontWeight: item.active ? 600 : 500,
+                            color: item.active ? COLORS.primary : COLORS.textPrimary,
+                          }}
+                        >
+                          {item.title}
+                        </Typography>
+                        {item.badge && (
+                          <Box sx={{ px: '8px', py: '2px', borderRadius: '4px', bgcolor: '#DBEAFE' }}>
+                            <Typography sx={{ fontSize: 11, fontWeight: 500, color: COLORS.primary }}>
+                              {item.badge}
+                            </Typography>
+                          </Box>
+                        )}
+                      </Box>
+                      <Typography sx={{ fontSize: 12, color: COLORS.textSecondary }}>
+                        {item.desc}
                       </Typography>
-                      {item.badge && (
-                        <Box sx={{ px: '8px', py: '2px', borderRadius: '4px', bgcolor: '#DBEAFE' }}>
-                          <Typography sx={{ fontSize: 11, fontWeight: 500, color: COLORS.primary }}>
-                            {item.badge}
-                          </Typography>
-                        </Box>
+                      {item.time && (
+                        <Typography sx={{ fontSize: 11, color: COLORS.textDisabled }}>
+                          {item.time}
+                        </Typography>
                       )}
                     </Box>
-                    <Typography sx={{ fontSize: 12, color: COLORS.textSecondary }}>
-                      {item.desc}
-                    </Typography>
-                    <Typography sx={{ fontSize: 11, color: COLORS.textDisabled }}>
-                      {item.time}
-                    </Typography>
                   </Box>
-                </Box>
-              ))}
+                );
+              })}
             </Box>
           </SectionCard>
 
           {/* Order info */}
           <SectionCard title="订单信息" gap={14}>
-            {ORDER.orderInfo.map((row) => (
-              <InfoRow key={row.label} label={row.label} value={row.value} muted={row.muted} />
-            ))}
+            <InfoRow label="订单编号" value={record.orderNo} />
+            <InfoRow label="下单时间" value={formatDateTime(record.exchangeTime)} />
+            <InfoRow label="商品类型" value={PRODUCT_TYPE_LABEL[record.productType]} />
+            <InfoRow label="创建时间" value={formatDateTime(record.createdAt)} />
+            <InfoRow label="更新时间" value={formatDateTime(record.updatedAt)} />
           </SectionCard>
 
           {/* Delivery info */}
-          <SectionCard title="收货信息" gap={14}>
-            {ORDER.delivery.map((row) => (
-              <InfoRow key={row.label} label={row.label} value={row.value} />
-            ))}
-          </SectionCard>
+          {record.shippingInfo && (
+            <SectionCard title="收货信息" gap={14}>
+              <InfoRow label="收货人" value={record.shippingInfo.recipient ?? '-'} />
+              <InfoRow label="联系电话" value={record.shippingInfo.phone ?? '-'} />
+              <InfoRow label="收货地址" value={record.shippingInfo.address ?? '-'} />
+            </SectionCard>
+          )}
         </Box>
       </Box>
+
+      {/* Action confirm dialog */}
+      <Dialog
+        open={pendingAction !== null}
+        onClose={() => {
+          if (!submitting) setPendingAction(null);
+        }}
+        PaperProps={{ sx: { width: 400, maxWidth: '90vw', borderRadius: '16px' } }}
+      >
+        <DialogTitle sx={{ fontSize: 16, fontWeight: 700, color: COLORS.textPrimary }}>
+          {pendingAction === 'ship' ? '确认发货' : '确认完成订单'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: 13, color: COLORS.textPrimary }}>
+            {pendingAction === 'ship'
+              ? `确认将订单「${record.orderNo}」标记为已发货吗？`
+              : `确认将订单「${record.orderNo}」标记为已完成吗？`}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: '16px 24px 20px 24px' }}>
+          <Button
+            variant="outlined"
+            onClick={() => setPendingAction(null)}
+            disabled={submitting}
+            sx={{
+              textTransform: 'none',
+              fontSize: 13,
+              fontWeight: 500,
+              color: COLORS.textPrimary,
+              borderColor: COLORS.border,
+              borderRadius: '8px',
+              px: '20px',
+              '&:hover': { borderColor: COLORS.border, bgcolor: COLORS.bgPage },
+            }}
+          >
+            取消
+          </Button>
+          <Button
+            variant="contained"
+            onClick={confirmAction}
+            disabled={submitting}
+            sx={{
+              textTransform: 'none',
+              fontSize: 13,
+              fontWeight: 600,
+              bgcolor: COLORS.primary,
+              borderRadius: '8px',
+              px: '20px',
+              boxShadow: 'none',
+              '&:hover': { bgcolor: COLORS.primaryHover, boxShadow: 'none' },
+            }}
+          >
+            {submitting ? '提交中...' : '确认'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

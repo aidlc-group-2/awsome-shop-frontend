@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import type { SvgIconProps } from '@mui/material/SvgIcon';
 import Box from '@mui/material/Box';
@@ -9,7 +9,8 @@ import IconButton from '@mui/material/IconButton';
 import Dialog from '@mui/material/Dialog';
 import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
-import Switch from '@mui/material/Switch';
+import Snackbar from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import RuleIcon from '@mui/icons-material/Rule';
@@ -17,13 +18,10 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import TollIcon from '@mui/icons-material/Toll';
 import GroupIcon from '@mui/icons-material/Group';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
-import CakeIcon from '@mui/icons-material/Cake';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import CelebrationIcon from '@mui/icons-material/Celebration';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
+import EventRepeatIcon from '@mui/icons-material/EventRepeat';
+import { getPointsRule, updatePointsRule, type PointsRuleDTO } from '../../services/points';
 
 // ---- Theme colors (design "light/blue" theme) ----
 const COLORS = {
@@ -38,13 +36,9 @@ const COLORS = {
   amber: '#D97706',
   danger: '#DC2626',
   purple: '#7C3AED',
-  chipGreenBg: '#DCFCE7',
-  chipGreenText: '#166534',
-  chipRedBg: '#FEE2E2',
-  chipRedText: '#991B1B',
 };
 
-// ---- Stat cards ----
+// ---- Stat cards（后端暂无统计接口，保留静态展示） ----
 interface StatCard {
   label: string;
   value: string;
@@ -61,155 +55,31 @@ const STAT_CARDS: StatCard[] = [
   { label: '覆盖员工', value: '257', valueColor: COLORS.textPrimary, icon: GroupIcon, iconColor: '#8B5CF6', iconBg: '#F5F3FF' },
 ];
 
-// ---- Rules table ----
-interface RuleRow {
-  name: string;
-  description: string;
-  icon: ComponentType<SvgIconProps>;
-  iconColor: string;
-  iconBg: string;
-  typeLabel: string;
-  typeColor: string;
-  typeBg: string;
-  points: string;
-  pointsColor: string;
-  trigger: string;
-  enabled: boolean;
-}
+const CYCLE_LABEL: Record<PointsRuleDTO['periodicCycle'], string> = {
+  DAILY: '每日',
+  WEEKLY: '每周',
+  MONTHLY: '每月',
+};
 
-const RULE_ROWS: RuleRow[] = [
-  {
-    name: '每月基础积分',
-    description: '每月固定发放基础福利积分',
-    icon: CalendarMonthIcon,
-    iconColor: '#2563EB',
-    iconBg: '#EFF6FF',
-    typeLabel: '固定发放',
-    typeColor: '#2563EB',
-    typeBg: '#EFF6FF',
-    points: '500',
-    pointsColor: COLORS.textPrimary,
-    trigger: '每月1日自动发放',
-    enabled: true,
-  },
-  {
-    name: '入职周年奖励',
-    description: '入职满一年及每年周年日奖励',
-    icon: WorkspacePremiumIcon,
-    iconColor: '#8B5CF6',
-    iconBg: '#F5F3FF',
-    typeLabel: '事件触发',
-    typeColor: '#8B5CF6',
-    typeBg: '#F5F3FF',
-    points: '200',
-    pointsColor: COLORS.textPrimary,
-    trigger: '员工入职周年日触发',
-    enabled: true,
-  },
-  {
-    name: '生日祝福积分',
-    description: '员工生日当天发放祝福积分',
-    icon: CakeIcon,
-    iconColor: '#F59E0B',
-    iconBg: '#FFF7ED',
-    typeLabel: '事件触发',
-    typeColor: '#D97706',
-    typeBg: '#FFF7ED',
-    points: '100',
-    pointsColor: COLORS.textPrimary,
-    trigger: '员工生日当天自动发放',
-    enabled: true,
-  },
-  {
-    name: '季度绩效奖励',
-    description: '根据季度绩效评级发放奖励积分',
-    icon: TrendingUpIcon,
-    iconColor: '#10B981',
-    iconBg: '#ECFDF5',
-    typeLabel: '绩效关联',
-    typeColor: '#059669',
-    typeBg: '#ECFDF5',
-    points: '300~800',
-    pointsColor: COLORS.textPrimary,
-    trigger: '季度绩效评估完成后',
-    enabled: true,
-  },
-  {
-    name: '推荐入职奖励',
-    description: '推荐新员工通过试用期后奖励',
-    icon: PersonAddIcon,
-    iconColor: '#EF4444',
-    iconBg: '#FEF2F2',
-    typeLabel: '事件触发',
-    typeColor: '#DC2626',
-    typeBg: '#FEF2F2',
-    points: '500',
-    pointsColor: COLORS.textPrimary,
-    trigger: '被推荐人通过试用期',
-    enabled: true,
-  },
-  {
-    name: '节日特别福利',
-    description: '法定节假日发放特别福利积分',
-    icon: CelebrationIcon,
-    iconColor: '#9CA3AF',
-    iconBg: '#F3F4F6',
-    typeLabel: '节日触发',
-    typeColor: '#6B7280',
-    typeBg: '#F3F4F6',
-    points: '200',
-    pointsColor: COLORS.textSecondary,
-    trigger: '法定节假日前一天',
-    enabled: false,
-  },
+const CYCLE_OPTIONS: { value: PointsRuleDTO['periodicCycle']; label: string }[] = [
+  { value: 'DAILY', label: '每日' },
+  { value: 'WEEKLY', label: '每周' },
+  { value: 'MONTHLY', label: '每月' },
 ];
 
 // Column widths matching the design frame
 const COL = {
-  type: 100,
-  points: 100,
-  trigger: 180,
-  status: 70,
+  points: 140,
+  trigger: 200,
   actions: 90,
 };
 
-// ---- Rule form dialog ----
 interface RuleFormValues {
-  name: string;
-  type: string;
-  points: string;
-  trigger: string;
-  scope: string;
-  method: string;
-  enabled: boolean;
-  description: string;
+  onboardingBonus: string;
+  periodicAmount: string;
+  periodicCycle: PointsRuleDTO['periodicCycle'];
+  validityDays: string;
 }
-
-const EMPTY_FORM: RuleFormValues = {
-  name: '',
-  type: '',
-  points: '',
-  trigger: '',
-  scope: '全部员工',
-  method: '自动发放',
-  enabled: true,
-  description: '',
-};
-
-const EDIT_FORM: RuleFormValues = {
-  name: '每月基础积分',
-  type: '固定发放',
-  points: '500',
-  trigger: '每月1日自动发放',
-  scope: '全部员工',
-  method: '自动发放',
-  enabled: true,
-  description: '每月固定发放基础福利积分',
-};
-
-const RULE_TYPES = ['固定发放', '事件触发', '绩效关联', '节日触发'];
-const SCOPES = ['全部员工', '正式员工', '试用期员工', '管理层'];
-const METHODS = ['自动发放', '手动发放'];
 
 const fieldSx = {
   '& .MuiOutlinedInput-root': {
@@ -236,277 +106,126 @@ function FieldLabel({ children, required }: { children: ReactNode; required?: bo
   );
 }
 
-interface RuleDialogProps {
-  open: boolean;
-  mode: 'add' | 'edit';
-  initialValues: RuleFormValues;
-  onClose: () => void;
-}
-
-function RuleDialog({ open, mode, initialValues, onClose }: RuleDialogProps) {
-  const [values, setValues] = useState<RuleFormValues>(initialValues);
-
-  // Re-sync form when the dialog is (re)opened with new initial values.
-  const [lastInit, setLastInit] = useState(initialValues);
-  if (open && lastInit !== initialValues) {
-    setLastInit(initialValues);
-    setValues(initialValues);
-  }
-
-  const set = <K extends keyof RuleFormValues>(key: K, value: RuleFormValues[K]) =>
-    setValues((prev) => ({ ...prev, [key]: value }));
-
-  const title = mode === 'add' ? '新增积分规则' : '编辑积分规则';
-  const submitLabel = mode === 'add' ? '创建规则' : '保存修改';
-  const RuleFieldIcon = mode === 'edit' ? CalendarMonthIcon : null;
-
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth={false}
-      PaperProps={{
-        sx: {
-          width: 560,
-          maxWidth: '100%',
-          borderRadius: '16px',
-          m: 2,
-        },
-      }}
-    >
-      {/* Header */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          px: '24px',
-          py: '20px',
-          borderBottom: `1px solid ${COLORS.borderLight}`,
-        }}
-      >
-        <Typography sx={{ fontSize: 18, fontWeight: 700, color: COLORS.textPrimary }}>
-          {title}
-        </Typography>
-        <IconButton onClick={onClose} size="small" sx={{ color: COLORS.textSecondary }}>
-          <CloseIcon sx={{ fontSize: 22 }} />
-        </IconButton>
-      </Box>
-
-      {/* Body */}
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: '18px', px: '24px', py: '20px' }}>
-        {/* Row 1: name / type / points */}
-        <Box sx={{ display: 'flex', gap: '16px' }}>
-          <Box sx={{ flex: 1 }}>
-            <FieldLabel required>规则名称</FieldLabel>
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="请输入规则名称"
-              value={values.name}
-              onChange={(e) => set('name', e.target.value)}
-              sx={fieldSx}
-            />
-          </Box>
-          <Box sx={{ flex: 1 }}>
-            <FieldLabel required>规则类型</FieldLabel>
-            <TextField
-              select
-              fullWidth
-              size="small"
-              value={values.type}
-              onChange={(e) => set('type', e.target.value)}
-              SelectProps={{ displayEmpty: true }}
-              sx={fieldSx}
-            >
-              <MenuItem value="" disabled sx={{ fontSize: 13, color: COLORS.textSecondary }}>
-                请选择规则类型
-              </MenuItem>
-              {RULE_TYPES.map((opt) => (
-                <MenuItem key={opt} value={opt} sx={{ fontSize: 13 }}>
-                  {opt}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Box>
-          <Box sx={{ flex: 1 }}>
-            <FieldLabel required>积分值</FieldLabel>
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="请输入积分值"
-              value={values.points}
-              onChange={(e) => set('points', e.target.value)}
-              sx={fieldSx}
-            />
-          </Box>
-        </Box>
-
-        {/* Trigger */}
-        <Box>
-          <FieldLabel required>触发条件</FieldLabel>
-          <TextField
-            fullWidth
-            size="small"
-            placeholder="请输入触发条件描述"
-            value={values.trigger}
-            onChange={(e) => set('trigger', e.target.value)}
-            sx={fieldSx}
-          />
-        </Box>
-
-        {/* Row 2: scope / method */}
-        <Box sx={{ display: 'flex', gap: '16px' }}>
-          <Box sx={{ flex: 1 }}>
-            <FieldLabel>适用范围</FieldLabel>
-            <TextField
-              select
-              fullWidth
-              size="small"
-              value={values.scope}
-              onChange={(e) => set('scope', e.target.value)}
-              sx={fieldSx}
-            >
-              {SCOPES.map((opt) => (
-                <MenuItem key={opt} value={opt} sx={{ fontSize: 13 }}>
-                  {opt}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Box>
-          <Box sx={{ flex: 1 }}>
-            <FieldLabel>发放方式</FieldLabel>
-            <TextField
-              select
-              fullWidth
-              size="small"
-              value={values.method}
-              onChange={(e) => set('method', e.target.value)}
-              sx={fieldSx}
-            >
-              {METHODS.map((opt) => (
-                <MenuItem key={opt} value={opt} sx={{ fontSize: 13 }}>
-                  {opt}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Box>
-        </Box>
-
-        {/* Row 3: status / icon */}
-        <Box sx={{ display: 'flex', gap: '16px' }}>
-          <Box sx={{ flex: 1 }}>
-            <FieldLabel>状态</FieldLabel>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: '10px', height: 40 }}>
-              <Switch
-                checked={values.enabled}
-                onChange={(e) => set('enabled', e.target.checked)}
-                sx={{
-                  '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.white },
-                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                    bgcolor: COLORS.primary,
-                    opacity: 1,
-                  },
-                }}
-              />
-              <Typography sx={{ fontSize: 13, color: COLORS.textPrimary }}>
-                {values.enabled ? '启用' : '禁用'}
-              </Typography>
-            </Box>
-          </Box>
-          <Box sx={{ flex: 1 }}>
-            <FieldLabel>规则图标</FieldLabel>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Box
-                sx={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  bgcolor: mode === 'edit' ? '#EFF6FF' : COLORS.pageBg,
-                  border: `1px solid ${mode === 'edit' ? COLORS.primary : COLORS.border}`,
-                }}
-              >
-                {RuleFieldIcon && <RuleFieldIcon sx={{ fontSize: 20, color: COLORS.primary }} />}
-              </Box>
-              <Typography sx={{ fontSize: 12, color: COLORS.textSecondary }}>选择图标</Typography>
-            </Box>
-          </Box>
-        </Box>
-
-        {/* Description */}
-        <Box>
-          <FieldLabel>规则描述</FieldLabel>
-          <TextField
-            fullWidth
-            multiline
-            minRows={2}
-            placeholder="请输入规则描述（选填）"
-            value={values.description}
-            onChange={(e) => set('description', e.target.value)}
-            sx={fieldSx}
-          />
-        </Box>
-      </Box>
-
-      {/* Footer */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          gap: '12px',
-          px: '24px',
-          pt: '16px',
-          pb: '20px',
-          borderTop: `1px solid ${COLORS.borderLight}`,
-        }}
-      >
-        <Button
-          onClick={onClose}
-          disableElevation
-          sx={{
-            textTransform: 'none',
-            fontSize: 14,
-            fontWeight: 500,
-            color: COLORS.textPrimary,
-            bgcolor: COLORS.white,
-            border: `1px solid ${COLORS.border}`,
-            borderRadius: '8px',
-            px: '24px',
-            py: '10px',
-            '&:hover': { bgcolor: COLORS.pageBg },
-          }}
-        >
-          取消
-        </Button>
-        <Button
-          onClick={onClose}
-          disableElevation
-          variant="contained"
-          sx={{
-            textTransform: 'none',
-            fontSize: 14,
-            fontWeight: 600,
-            bgcolor: COLORS.primary,
-            borderRadius: '8px',
-            px: '24px',
-            py: '10px',
-            '&:hover': { bgcolor: '#1D4ED8' },
-          }}
-        >
-          {submitLabel}
-        </Button>
-      </Box>
-    </Dialog>
-  );
-}
-
 export default function AdminPoints() {
-  const [addOpen, setAddOpen] = useState(false);
+  const [rule, setRule] = useState<PointsRuleDTO | null>(null);
+  const [error, setError] = useState('');
+  const [snackbar, setSnackbar] = useState('');
+
   const [editOpen, setEditOpen] = useState(false);
+  const [form, setForm] = useState<RuleFormValues>({
+    onboardingBonus: '',
+    periodicAmount: '',
+    periodicCycle: 'MONTHLY',
+    validityDays: '',
+  });
+  const [dialogError, setDialogError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const fetchRule = useCallback(() => {
+    setError('');
+    getPointsRule()
+      .then(setRule)
+      .catch((e: Error) => setError(e.message));
+  }, []);
+
+  useEffect(() => {
+    fetchRule();
+  }, [fetchRule]);
+
+  const openEdit = () => {
+    if (!rule) return;
+    setForm({
+      onboardingBonus: String(rule.onboardingBonus),
+      periodicAmount: String(rule.periodicAmount),
+      periodicCycle: rule.periodicCycle,
+      validityDays: String(rule.validityDays),
+    });
+    setDialogError('');
+    setEditOpen(true);
+  };
+
+  const setField = <K extends keyof RuleFormValues>(key: K, value: RuleFormValues[K]) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
+
+  const handleSave = async () => {
+    const onboardingBonus = Number(form.onboardingBonus);
+    const periodicAmount = Number(form.periodicAmount);
+    const validityDays = Number(form.validityDays);
+    if (
+      !form.onboardingBonus ||
+      !form.periodicAmount ||
+      !form.validityDays ||
+      Number.isNaN(onboardingBonus) ||
+      Number.isNaN(periodicAmount) ||
+      Number.isNaN(validityDays)
+    ) {
+      setDialogError('请完整填写各项数值');
+      return;
+    }
+    setSaving(true);
+    setDialogError('');
+    try {
+      await updatePointsRule({
+        onboardingBonus,
+        periodicAmount,
+        periodicCycle: form.periodicCycle,
+        validityDays,
+      });
+      setEditOpen(false);
+      setSnackbar('积分规则保存成功');
+      fetchRule();
+    } catch (e) {
+      setDialogError(e instanceof Error ? e.message : '保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // 规则展示行（由真实规则数据生成）
+  const ruleRows = rule
+    ? [
+        {
+          key: 'onboarding',
+          name: '入职奖励积分',
+          description: '新员工入职时一次性发放',
+          icon: CelebrationIcon,
+          iconColor: '#8B5CF6',
+          iconBg: '#F5F3FF',
+          points: rule.onboardingBonus.toLocaleString(),
+          trigger: '员工入职时自动发放',
+        },
+        {
+          key: 'periodic',
+          name: '周期发放积分',
+          description: `${CYCLE_LABEL[rule.periodicCycle]}固定发放基础福利积分`,
+          icon: CalendarMonthIcon,
+          iconColor: '#2563EB',
+          iconBg: '#EFF6FF',
+          points: rule.periodicAmount.toLocaleString(),
+          trigger: `${CYCLE_LABEL[rule.periodicCycle]}自动发放`,
+        },
+        {
+          key: 'cycle',
+          name: '发放周期',
+          description: '周期发放积分的发放频率',
+          icon: EventRepeatIcon,
+          iconColor: '#10B981',
+          iconBg: '#ECFDF5',
+          points: CYCLE_LABEL[rule.periodicCycle],
+          trigger: '按周期自动触发',
+        },
+        {
+          key: 'validity',
+          name: '积分有效期',
+          description: '积分发放后的有效天数',
+          icon: HourglassBottomIcon,
+          iconColor: '#F59E0B',
+          iconBg: '#FFF7ED',
+          points: `${rule.validityDays} 天`,
+          trigger: '到期后自动过期清零',
+        },
+      ]
+    : [];
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: '20px', p: '32px' }}>
@@ -521,7 +240,7 @@ export default function AdminPoints() {
           </Typography>
         </Box>
         <Button
-          onClick={() => setAddOpen(true)}
+          onClick={() => setSnackbar('后端暂未提供新增规则接口')}
           disableElevation
           variant="contained"
           startIcon={<AddIcon sx={{ fontSize: 18 }} />}
@@ -540,7 +259,7 @@ export default function AdminPoints() {
         </Button>
       </Box>
 
-      {/* Stat cards */}
+      {/* Stat cards（静态展示） */}
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
         {STAT_CARDS.map((card) => {
           const IconComp = card.icon;
@@ -584,6 +303,12 @@ export default function AdminPoints() {
         })}
       </Box>
 
+      {error && (
+        <Alert severity="error" sx={{ borderRadius: '8px' }}>
+          {error}
+        </Alert>
+      )}
+
       {/* Rules table */}
       <Paper
         elevation={0}
@@ -604,19 +329,13 @@ export default function AdminPoints() {
           }}
         >
           <Box sx={{ flex: 1 }}>
-            <HeadCell>规则名称</HeadCell>
-          </Box>
-          <Box sx={{ width: COL.type }}>
-            <HeadCell>规则类型</HeadCell>
+            <HeadCell>规则项</HeadCell>
           </Box>
           <Box sx={{ width: COL.points }}>
-            <HeadCell>积分值</HeadCell>
+            <HeadCell>当前配置</HeadCell>
           </Box>
           <Box sx={{ width: COL.trigger }}>
-            <HeadCell>触发条件</HeadCell>
-          </Box>
-          <Box sx={{ width: COL.status }}>
-            <HeadCell>状态</HeadCell>
+            <HeadCell>触发说明</HeadCell>
           </Box>
           <Box sx={{ width: COL.actions }}>
             <HeadCell>操作</HeadCell>
@@ -624,18 +343,17 @@ export default function AdminPoints() {
         </Box>
 
         {/* Table rows */}
-        {RULE_ROWS.map((row, idx) => {
+        {ruleRows.map((row, idx) => {
           const RowIcon = row.icon;
-          const isLast = idx === RULE_ROWS.length - 1;
+          const isLast = idx === ruleRows.length - 1;
           return (
             <Box
-              key={row.name}
+              key={row.key}
               sx={{
                 display: 'flex',
                 alignItems: 'center',
                 px: '20px',
                 py: '14px',
-                opacity: row.enabled ? 1 : 0.6,
                 borderBottom: isLast ? 'none' : `1px solid ${COLORS.borderLight}`,
               }}
             >
@@ -656,13 +374,7 @@ export default function AdminPoints() {
                   >
                     <RowIcon sx={{ fontSize: 16, color: row.iconColor }} />
                   </Box>
-                  <Typography
-                    sx={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: row.enabled ? COLORS.textPrimary : COLORS.textSecondary,
-                    }}
-                  >
+                  <Typography sx={{ fontSize: 13, fontWeight: 600, color: COLORS.textPrimary }}>
                     {row.name}
                   </Typography>
                 </Box>
@@ -671,26 +383,9 @@ export default function AdminPoints() {
                 </Typography>
               </Box>
 
-              {/* Type badge */}
-              <Box sx={{ width: COL.type }}>
-                <Box
-                  sx={{
-                    display: 'inline-flex',
-                    borderRadius: '4px',
-                    bgcolor: row.typeBg,
-                    px: '8px',
-                    py: '3px',
-                  }}
-                >
-                  <Typography sx={{ fontSize: 11, fontWeight: 500, color: row.typeColor }}>
-                    {row.typeLabel}
-                  </Typography>
-                </Box>
-              </Box>
-
-              {/* Points */}
+              {/* Value */}
               <Box sx={{ width: COL.points }}>
-                <Typography sx={{ fontSize: 14, fontWeight: 700, color: row.pointsColor }}>
+                <Typography sx={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary }}>
                   {row.points}
                 </Typography>
               </Box>
@@ -702,35 +397,10 @@ export default function AdminPoints() {
                 </Typography>
               </Box>
 
-              {/* Status chip */}
-              <Box sx={{ width: COL.status }}>
-                <Box
-                  sx={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: '12px',
-                    bgcolor: row.enabled ? COLORS.chipGreenBg : COLORS.chipRedBg,
-                    px: '10px',
-                    py: '4px',
-                  }}
-                >
-                  <Typography
-                    sx={{
-                      fontSize: 11,
-                      fontWeight: 500,
-                      color: row.enabled ? COLORS.chipGreenText : COLORS.chipRedText,
-                    }}
-                  >
-                    {row.enabled ? '启用' : '禁用'}
-                  </Typography>
-                </Box>
-              </Box>
-
               {/* Actions */}
               <Box sx={{ width: COL.actions, display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <Typography
-                  onClick={() => setEditOpen(true)}
+                  onClick={openEdit}
                   sx={{
                     fontSize: 12,
                     fontWeight: 500,
@@ -740,42 +410,177 @@ export default function AdminPoints() {
                 >
                   编辑
                 </Typography>
-                <Typography
-                  sx={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: row.enabled ? COLORS.amber : '#10B981',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {row.enabled ? '禁用' : '启用'}
-                </Typography>
               </Box>
             </Box>
           );
         })}
+
+        {!rule && !error && (
+          <Box sx={{ px: '20px', py: '32px', textAlign: 'center' }}>
+            <Typography sx={{ fontSize: 13, color: COLORS.textSecondary }}>加载中...</Typography>
+          </Box>
+        )}
       </Paper>
 
-      {/* Pagination */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography sx={{ fontSize: 13, color: COLORS.textSecondary }}>
-          显示 1-6 共 12 条规则
-        </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <PageButton>
-            <ChevronLeftIcon sx={{ fontSize: 18, color: COLORS.textSecondary }} />
-          </PageButton>
-          <PageButton active>1</PageButton>
-          <PageButton>2</PageButton>
-          <PageButton>
-            <ChevronRightIcon sx={{ fontSize: 18, color: COLORS.textSecondary }} />
-          </PageButton>
+      {/* Edit Rule Dialog */}
+      <Dialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        maxWidth={false}
+        PaperProps={{
+          sx: {
+            width: 560,
+            maxWidth: '100%',
+            borderRadius: '16px',
+            m: 2,
+          },
+        }}
+      >
+        {/* Header */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            px: '24px',
+            py: '20px',
+            borderBottom: `1px solid ${COLORS.borderLight}`,
+          }}
+        >
+          <Typography sx={{ fontSize: 18, fontWeight: 700, color: COLORS.textPrimary }}>
+            编辑积分规则
+          </Typography>
+          <IconButton onClick={() => setEditOpen(false)} size="small" sx={{ color: COLORS.textSecondary }}>
+            <CloseIcon sx={{ fontSize: 22 }} />
+          </IconButton>
         </Box>
-      </Box>
 
-      {/* Dialogs */}
-      <RuleDialog open={addOpen} mode="add" initialValues={EMPTY_FORM} onClose={() => setAddOpen(false)} />
-      <RuleDialog open={editOpen} mode="edit" initialValues={EDIT_FORM} onClose={() => setEditOpen(false)} />
+        {/* Body */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '18px', px: '24px', py: '20px' }}>
+          {dialogError && (
+            <Alert severity="error" sx={{ borderRadius: '8px' }}>
+              {dialogError}
+            </Alert>
+          )}
+
+          <Box sx={{ display: 'flex', gap: '16px' }}>
+            <Box sx={{ flex: 1 }}>
+              <FieldLabel required>入职奖励积分</FieldLabel>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="请输入入职奖励积分"
+                value={form.onboardingBonus}
+                onChange={(e) => setField('onboardingBonus', e.target.value.replace(/[^0-9]/g, ''))}
+                sx={fieldSx}
+              />
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <FieldLabel required>周期发放积分</FieldLabel>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="请输入周期发放积分"
+                value={form.periodicAmount}
+                onChange={(e) => setField('periodicAmount', e.target.value.replace(/[^0-9]/g, ''))}
+                sx={fieldSx}
+              />
+            </Box>
+          </Box>
+
+          <Box sx={{ display: 'flex', gap: '16px' }}>
+            <Box sx={{ flex: 1 }}>
+              <FieldLabel required>发放周期</FieldLabel>
+              <TextField
+                select
+                fullWidth
+                size="small"
+                value={form.periodicCycle}
+                onChange={(e) =>
+                  setField('periodicCycle', e.target.value as PointsRuleDTO['periodicCycle'])
+                }
+                sx={fieldSx}
+              >
+                {CYCLE_OPTIONS.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value} sx={{ fontSize: 13 }}>
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <FieldLabel required>积分有效期（天）</FieldLabel>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="请输入有效天数"
+                value={form.validityDays}
+                onChange={(e) => setField('validityDays', e.target.value.replace(/[^0-9]/g, ''))}
+                sx={fieldSx}
+              />
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Footer */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '12px',
+            px: '24px',
+            pt: '16px',
+            pb: '20px',
+            borderTop: `1px solid ${COLORS.borderLight}`,
+          }}
+        >
+          <Button
+            onClick={() => setEditOpen(false)}
+            disableElevation
+            sx={{
+              textTransform: 'none',
+              fontSize: 14,
+              fontWeight: 500,
+              color: COLORS.textPrimary,
+              bgcolor: COLORS.white,
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: '8px',
+              px: '24px',
+              py: '10px',
+              '&:hover': { bgcolor: COLORS.pageBg },
+            }}
+          >
+            取消
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            disableElevation
+            variant="contained"
+            sx={{
+              textTransform: 'none',
+              fontSize: 14,
+              fontWeight: 600,
+              bgcolor: COLORS.primary,
+              borderRadius: '8px',
+              px: '24px',
+              py: '10px',
+              '&:hover': { bgcolor: '#1D4ED8' },
+            }}
+          >
+            保存修改
+          </Button>
+        </Box>
+      </Dialog>
+
+      <Snackbar
+        open={!!snackbar}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar('')}
+        message={snackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   );
 }
@@ -785,37 +590,5 @@ function HeadCell({ children }: { children: ReactNode }) {
     <Typography sx={{ fontSize: 12, fontWeight: 600, color: COLORS.textSecondary }}>
       {children}
     </Typography>
-  );
-}
-
-function PageButton({ children, active }: { children: ReactNode; active?: boolean }) {
-  return (
-    <Box
-      sx={{
-        width: 32,
-        height: 32,
-        borderRadius: '6px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-        bgcolor: active ? COLORS.primary : COLORS.white,
-        border: active ? 'none' : `1px solid ${COLORS.border}`,
-      }}
-    >
-      {typeof children === 'string' ? (
-        <Typography
-          sx={{
-            fontSize: 13,
-            fontWeight: active ? 600 : 400,
-            color: active ? COLORS.white : COLORS.textPrimary,
-          }}
-        >
-          {children}
-        </Typography>
-      ) : (
-        children
-      )}
-    </Box>
   );
 }

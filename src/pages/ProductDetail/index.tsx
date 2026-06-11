@@ -1,22 +1,18 @@
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
-import Rating from '@mui/material/Rating';
+import CircularProgress from '@mui/material/CircularProgress';
 import HeadphonesIcon from '@mui/icons-material/Headphones';
-import VideocamIcon from '@mui/icons-material/Videocam';
 import SettingsIcon from '@mui/icons-material/Settings';
 import DescriptionIcon from '@mui/icons-material/Description';
-import RecommendIcon from '@mui/icons-material/Recommend';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import ShareIcon from '@mui/icons-material/Share';
-import TollIcon from '@mui/icons-material/Toll';
-import SpeakerIcon from '@mui/icons-material/Speaker';
-import HeadsetMicIcon from '@mui/icons-material/HeadsetMic';
+import { listProducts, type ProductDTO } from '../../services/product';
 
 const COLORS = {
   primary: '#2563EB',
@@ -34,44 +30,93 @@ const COLORS = {
   success: '#16A34A',
 };
 
-const THUMBNAILS = [
-  { icon: HeadphonesIcon, active: true },
-  { icon: HeadphonesIcon, active: false },
-  { icon: HeadphonesIcon, active: false },
-  { icon: HeadphonesIcon, active: false },
-  { icon: VideocamIcon, active: false },
-];
+/** 把后端的逗号/顿号分隔字符串拆成数组 */
+const splitList = (value: string | null): string[] =>
+  value
+    ? value
+        .split(/[,，、|]/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
 
-const SPECS: { label: string; value: string }[] = [
-  { label: '品牌', value: 'Sony 索尼' },
-  { label: '型号', value: 'WH-1000XM5' },
-  { label: '降噪类型', value: '主动降噪（ANC）' },
-  { label: '续航时间', value: '30 小时' },
-  { label: '连接方式', value: '蓝牙 5.2 / 3.5mm 有线' },
-  { label: '重量', value: '250g' },
-  { label: '音频编码', value: 'LDAC / AAC / SBC' },
-];
-
-const SERVICES = ['正品保证', '7天无理由', '全国联保'];
-
-const COLOR_OPTIONS = [
-  { name: '黑色', dot: '#1E293B' },
-  { name: '银色', dot: '#CBD5E1' },
-  { name: '深蓝', dot: '#1D4ED8' },
-];
-
-const RECOMMENDATIONS = [
-  { name: 'Bose QC45', points: '2,180', icon: SpeakerIcon, bg: '#DBEAFE', iconColor: '#3B82F6' },
-  { name: 'AirPods Pro 2', points: '1,890', icon: HeadsetMicIcon, bg: '#F5F3FF', iconColor: '#8B5CF6' },
-  { name: 'JBL Tune 770NC', points: '980', icon: HeadphonesIcon, bg: '#ECFDF5', iconColor: '#10B981' },
-];
+/** 兼容 [{label,value}] 与 [{品牌:'Sony'}] 两种规格结构 */
+const toSpecRows = (
+  specs: Array<Record<string, string>> | null,
+): { label: string; value: string }[] =>
+  (specs ?? []).flatMap((rec) => {
+    if (typeof rec.label === 'string' && typeof rec.value === 'string') {
+      return [{ label: rec.label, value: rec.value }];
+    }
+    return Object.entries(rec).map(([label, value]) => ({ label, value }));
+  });
 
 export default function ProductDetail() {
   const navigate = useNavigate();
-  useParams();
-  const [activeThumb, setActiveThumb] = useState(0);
+  const location = useLocation();
+  const { id } = useParams();
+  const stateProduct = (location.state as { product?: ProductDTO } | null)?.product;
+  const [fetched, setFetched] = useState<{
+    id: string | undefined;
+    product: ProductDTO | null;
+  } | null>(null);
   const [activeColor, setActiveColor] = useState(0);
   const [quantity, setQuantity] = useState(1);
+
+  const loading = !stateProduct && (fetched === null || fetched.id !== id);
+  const product = stateProduct ?? (loading ? null : fetched?.product ?? null);
+
+  useEffect(() => {
+    if (stateProduct) return;
+    let cancelled = false;
+    listProducts({ page: 1, size: 100 })
+      .then((res) => {
+        if (cancelled) return;
+        const found = res.records.find((p) => String(p.id) === id);
+        setFetched({ id, product: found ?? null });
+      })
+      .catch(() => {
+        if (!cancelled) setFetched({ id, product: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stateProduct, id]);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: '120px' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!product) {
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '16px',
+          py: '120px',
+        }}
+      >
+        <Typography sx={{ fontSize: 16, color: COLORS.textSecondary }}>商品不存在</Typography>
+        <Button
+          variant="outlined"
+          onClick={() => navigate('/')}
+          sx={{ textTransform: 'none', borderRadius: '8px' }}
+        >
+          返回首页
+        </Button>
+      </Box>
+    );
+  }
+
+  const colorOptions = splitList(product.colors);
+  const services = splitList(product.serviceGuarantee);
+  const specRows = toSpecRows(product.specs);
+  const inStock = product.stock > 0;
 
   return (
     <Box sx={{ display: 'flex', gap: '32px', p: '24px 48px' }}>
@@ -90,94 +135,58 @@ export default function ProductDetail() {
             overflow: 'hidden',
           }}
         >
-          <HeadphonesIcon sx={{ fontSize: 160, color: COLORS.primary }} />
-          <Box
-            sx={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              bgcolor: '#DC2626',
-              color: COLORS.white,
-              fontSize: 12,
-              fontWeight: 600,
-              px: '12px',
-              py: '6px',
-              borderRadius: '0 0 8px 0',
-            }}
-          >
-            热销好物
-          </Box>
-        </Box>
-
-        {/* Thumbnail row */}
-        <Box sx={{ display: 'flex', gap: '8px', pt: '12px' }}>
-          {THUMBNAILS.map((thumb, idx) => {
-            const ThumbIcon = thumb.icon;
-            const isActive = idx === activeThumb;
-            return (
-              <Box
-                key={idx}
-                onClick={() => setActiveThumb(idx)}
-                sx={{
-                  width: 76,
-                  height: 76,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  bgcolor: isActive ? '#DBEAFE' : COLORS.pageBg,
-                  border: isActive
-                    ? `2px solid ${COLORS.primary}`
-                    : `1px solid ${COLORS.borderLight}`,
-                }}
-              >
-                <ThumbIcon
-                  sx={{ fontSize: 32, color: isActive ? COLORS.primary : COLORS.textDisabled }}
-                />
-              </Box>
-            );
-          })}
+          {product.imageUrl ? (
+            <Box
+              component="img"
+              src={product.imageUrl}
+              alt={product.name}
+              sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            <HeadphonesIcon sx={{ fontSize: 160, color: COLORS.primary }} />
+          )}
         </Box>
 
         {/* Specs section */}
-        <Box sx={{ pt: '20px', mt: '20px', borderTop: `1px solid ${COLORS.border}` }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px', mb: '12px' }}>
-            <SettingsIcon sx={{ fontSize: 18, color: COLORS.textPrimary }} />
-            <Typography sx={{ fontSize: 14, fontWeight: 600, color: COLORS.textPrimary }}>
-              产品规格
-            </Typography>
-          </Box>
-          <Box
-            sx={{
-              borderRadius: '8px',
-              border: `1px solid ${COLORS.borderLight}`,
-              overflow: 'hidden',
-            }}
-          >
-            {SPECS.map((spec, idx) => (
-              <Box
-                key={spec.label}
-                sx={{
-                  display: 'flex',
-                  borderBottom:
-                    idx < SPECS.length - 1 ? `1px solid ${COLORS.border}` : 'none',
-                }}
-              >
-                <Box sx={{ width: 110, flexShrink: 0, bgcolor: COLORS.pageBg, p: '10px 14px' }}>
-                  <Typography sx={{ fontSize: 12, fontWeight: 500, color: COLORS.textSecondary }}>
-                    {spec.label}
-                  </Typography>
+        {specRows.length > 0 && (
+          <Box sx={{ pt: '20px', mt: '20px', borderTop: `1px solid ${COLORS.border}` }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px', mb: '12px' }}>
+              <SettingsIcon sx={{ fontSize: 18, color: COLORS.textPrimary }} />
+              <Typography sx={{ fontSize: 14, fontWeight: 600, color: COLORS.textPrimary }}>
+                产品规格
+              </Typography>
+            </Box>
+            <Box
+              sx={{
+                borderRadius: '8px',
+                border: `1px solid ${COLORS.borderLight}`,
+                overflow: 'hidden',
+              }}
+            >
+              {specRows.map((spec, idx) => (
+                <Box
+                  key={spec.label}
+                  sx={{
+                    display: 'flex',
+                    borderBottom:
+                      idx < specRows.length - 1 ? `1px solid ${COLORS.border}` : 'none',
+                  }}
+                >
+                  <Box sx={{ width: 110, flexShrink: 0, bgcolor: COLORS.pageBg, p: '10px 14px' }}>
+                    <Typography sx={{ fontSize: 12, fontWeight: 500, color: COLORS.textSecondary }}>
+                      {spec.label}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ flex: 1, p: '10px 14px' }}>
+                    <Typography sx={{ fontSize: 12, color: COLORS.textPrimary }}>
+                      {spec.value}
+                    </Typography>
+                  </Box>
                 </Box>
-                <Box sx={{ flex: 1, p: '10px 14px' }}>
-                  <Typography sx={{ fontSize: 12, color: COLORS.textPrimary }}>
-                    {spec.value}
-                  </Typography>
-                </Box>
-              </Box>
-            ))}
+              ))}
+            </Box>
           </Box>
-        </Box>
+        )}
       </Box>
 
       {/* ===================== Right column: Product Info ===================== */}
@@ -196,40 +205,31 @@ export default function ProductDetail() {
             首页
           </Typography>
           <ChevronRightIcon sx={{ fontSize: 14, color: COLORS.textDisabled }} />
-          <Typography sx={{ fontSize: 12, color: COLORS.textSecondary }}>数码电子</Typography>
+          <Typography sx={{ fontSize: 12, color: COLORS.textSecondary }}>
+            {product.category}
+          </Typography>
           <ChevronRightIcon sx={{ fontSize: 14, color: COLORS.textDisabled }} />
-          <Typography sx={{ fontSize: 12, color: COLORS.textDisabled }}>降噪耳机</Typography>
+          <Typography sx={{ fontSize: 12, color: COLORS.textDisabled }}>{product.name}</Typography>
         </Box>
 
         {/* Title */}
         <Typography sx={{ fontSize: 22, fontWeight: 700, color: COLORS.textPrimary }}>
-          Sony WH-1000XM5 降噪耳机
+          {product.name}
         </Typography>
 
         {/* Subtitle */}
-        <Typography
-          sx={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.5, mt: '8px' }}
-        >
-          业界领先主动降噪 | 30小时超长续航 | LDAC高解析度音频 | 舒适头戴设计
-        </Typography>
-
-        {/* Rating */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px', mt: '12px' }}>
-          <Rating
-            value={4.5}
-            precision={0.5}
-            size="small"
-            readOnly
-            sx={{
-              fontSize: 16,
-              '& .MuiRating-iconFilled': { color: COLORS.star },
-              '& .MuiRating-iconEmpty': { color: COLORS.border },
-            }}
-          />
-          <Typography sx={{ fontSize: 12, color: COLORS.textSecondary }}>
-            4.5 分 · 128 条评价 · 已兑换 86 件
+        {product.subtitle && (
+          <Typography
+            sx={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.5, mt: '8px' }}
+          >
+            {product.subtitle}
           </Typography>
-        </Box>
+        )}
+
+        {/* Sold count */}
+        <Typography sx={{ fontSize: 12, color: COLORS.textSecondary, mt: '12px' }}>
+          已兑换 {product.soldCount} 件
+        </Typography>
 
         {/* Price strip */}
         <Box
@@ -245,123 +245,140 @@ export default function ProductDetail() {
               积分价
             </Typography>
             <Typography sx={{ fontSize: 36, fontWeight: 800, color: COLORS.amberDark }}>
-              2,580
+              {product.pointsPrice.toLocaleString()}
             </Typography>
             <Typography sx={{ fontSize: 16, fontWeight: 500, color: COLORS.amberDark }}>
               积分
             </Typography>
-            <Typography sx={{ fontSize: 13, color: COLORS.amberDark }}>参考价 ¥2,999</Typography>
+            {product.marketPrice != null && (
+              <Typography sx={{ fontSize: 13, color: COLORS.amberDark }}>
+                参考价 ¥{product.marketPrice.toLocaleString()}
+              </Typography>
+            )}
           </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px', mt: '8px' }}>
-            <Box
-              sx={{
-                bgcolor: COLORS.amberDark,
-                color: COLORS.white,
-                fontSize: 10,
-                fontWeight: 600,
-                borderRadius: '4px',
-                px: '8px',
-                py: '2px',
-              }}
-            >
-              限时
+          {product.promotion && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px', mt: '8px' }}>
+              <Box
+                sx={{
+                  bgcolor: COLORS.amberDark,
+                  color: COLORS.white,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  borderRadius: '4px',
+                  px: '8px',
+                  py: '2px',
+                }}
+              >
+                促销
+              </Box>
+              <Typography sx={{ fontSize: 12, fontWeight: 500, color: COLORS.amberDark }}>
+                {product.promotion}
+              </Typography>
             </Box>
-            <Typography sx={{ fontSize: 12, fontWeight: 500, color: COLORS.amberDark }}>
-              新人首兑立减 100 积分
-            </Typography>
-          </Box>
+          )}
         </Box>
 
         {/* Info section: delivery, service, color, quantity */}
         <Box sx={{ pt: '16px' }}>
           {/* Delivery */}
-          <Box sx={{ display: 'flex', gap: '16px', p: '12px 0', borderBottom: `1px solid ${COLORS.border}` }}>
-            <Typography sx={{ fontSize: 13, color: COLORS.textDisabled, width: 48, flexShrink: 0 }}>
-              配送
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <Typography sx={{ fontSize: 13, color: COLORS.textPrimary }}>
-                北京市朝阳区 · 公司地址配送
+          {product.deliveryMethod && (
+            <Box
+              sx={{
+                display: 'flex',
+                gap: '16px',
+                p: '12px 0',
+                borderBottom: `1px solid ${COLORS.border}`,
+              }}
+            >
+              <Typography
+                sx={{ fontSize: 13, color: COLORS.textDisabled, width: 48, flexShrink: 0 }}
+              >
+                配送
               </Typography>
-              <Typography sx={{ fontSize: 12, color: COLORS.success }}>
-                预计 1-3 个工作日送达
+              <Typography sx={{ fontSize: 13, color: COLORS.textPrimary }}>
+                {product.deliveryMethod}
               </Typography>
             </Box>
-          </Box>
+          )}
 
           {/* Service */}
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '16px',
-              p: '12px 0',
-              borderBottom: `1px solid ${COLORS.border}`,
-            }}
-          >
-            <Typography sx={{ fontSize: 13, color: COLORS.textDisabled, width: 48, flexShrink: 0 }}>
-              服务
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              {SERVICES.map((svc) => (
-                <Box key={svc} sx={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <CheckCircleIcon sx={{ fontSize: 14, color: COLORS.success }} />
-                  <Typography sx={{ fontSize: 12, color: COLORS.textPrimary }}>{svc}</Typography>
-                </Box>
-              ))}
+          {services.length > 0 && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                p: '12px 0',
+                borderBottom: `1px solid ${COLORS.border}`,
+              }}
+            >
+              <Typography
+                sx={{ fontSize: 13, color: COLORS.textDisabled, width: 48, flexShrink: 0 }}
+              >
+                服务
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                {services.map((svc) => (
+                  <Box key={svc} sx={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircleIcon sx={{ fontSize: 14, color: COLORS.success }} />
+                    <Typography sx={{ fontSize: 12, color: COLORS.textPrimary }}>{svc}</Typography>
+                  </Box>
+                ))}
+              </Box>
             </Box>
-          </Box>
+          )}
 
           {/* Color */}
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '16px',
-              p: '12px 0',
-              borderBottom: `1px solid ${COLORS.border}`,
-            }}
-          >
-            <Typography sx={{ fontSize: 13, color: COLORS.textDisabled, width: 48, flexShrink: 0 }}>
-              颜色
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              {COLOR_OPTIONS.map((color, idx) => {
-                const isActive = idx === activeColor;
-                return (
-                  <Box
-                    key={color.name}
-                    onClick={() => setActiveColor(idx)}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      borderRadius: '8px',
-                      p: '8px 16px',
-                      cursor: 'pointer',
-                      bgcolor: isActive ? '#DBEAFE' : 'transparent',
-                      border: isActive
-                        ? `2px solid ${COLORS.primary}`
-                        : `1px solid ${COLORS.border}`,
-                    }}
-                  >
+          {colorOptions.length > 0 && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                p: '12px 0',
+                borderBottom: `1px solid ${COLORS.border}`,
+              }}
+            >
+              <Typography
+                sx={{ fontSize: 13, color: COLORS.textDisabled, width: 48, flexShrink: 0 }}
+              >
+                颜色
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {colorOptions.map((color, idx) => {
+                  const isActive = idx === activeColor;
+                  return (
                     <Box
-                      sx={{ width: 14, height: 14, borderRadius: '50%', bgcolor: color.dot }}
-                    />
-                    <Typography
+                      key={color}
+                      onClick={() => setActiveColor(idx)}
                       sx={{
-                        fontSize: 12,
-                        fontWeight: isActive ? 500 : 400,
-                        color: isActive ? COLORS.primary : COLORS.textPrimary,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        borderRadius: '8px',
+                        p: '8px 16px',
+                        cursor: 'pointer',
+                        bgcolor: isActive ? '#DBEAFE' : 'transparent',
+                        border: isActive
+                          ? `2px solid ${COLORS.primary}`
+                          : `1px solid ${COLORS.border}`,
                       }}
                     >
-                      {color.name}
-                    </Typography>
-                  </Box>
-                );
-              })}
+                      <Typography
+                        sx={{
+                          fontSize: 12,
+                          fontWeight: isActive ? 500 : 400,
+                          color: isActive ? COLORS.primary : COLORS.textPrimary,
+                        }}
+                      >
+                        {color}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
             </Box>
-          </Box>
+          )}
 
           {/* Quantity + stock */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: '16px', p: '12px 0' }}>
@@ -404,7 +421,9 @@ export default function ProductDetail() {
                 {quantity}
               </Box>
               <Box
-                onClick={() => setQuantity((q) => q + 1)}
+                onClick={() =>
+                  setQuantity((q) => (inStock ? Math.min(product.stock, q + 1) : q + 1))
+                }
                 sx={{
                   width: 32,
                   height: 32,
@@ -422,8 +441,10 @@ export default function ProductDetail() {
                 +
               </Box>
             </Box>
-            <Typography sx={{ fontSize: 12, color: COLORS.textSecondary }}>
-              有货 (库存56件)
+            <Typography
+              sx={{ fontSize: 12, color: inStock ? COLORS.textSecondary : '#DC2626' }}
+            >
+              {inStock ? `有货 (库存${product.stock}件)` : '暂时缺货'}
             </Typography>
           </Box>
         </Box>
@@ -433,7 +454,8 @@ export default function ProductDetail() {
           <Button
             variant="contained"
             startIcon={<ShoppingCartIcon sx={{ fontSize: 20 }} />}
-            onClick={() => navigate('/redeem/confirm')}
+            disabled={!inStock}
+            onClick={() => navigate('/redeem/delivery', { state: { product, quantity } })}
             sx={{
               height: 48,
               borderRadius: '8px',
@@ -481,81 +503,19 @@ export default function ProductDetail() {
         </Box>
 
         {/* Description section */}
-        <Box sx={{ pt: '20px', mt: '20px', borderTop: `1px solid ${COLORS.border}` }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px', mb: '10px' }}>
-            <DescriptionIcon sx={{ fontSize: 18, color: COLORS.textPrimary }} />
-            <Typography sx={{ fontSize: 14, fontWeight: 600, color: COLORS.textPrimary }}>
-              商品描述
-            </Typography>
-          </Box>
-          <Typography sx={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>
-            Sony WH-1000XM5 是索尼旗舰级无线降噪耳机，搭载全新集成处理器 V1 和 8 个麦克风，提供业界领先的降噪效果。30mm
-            驱动单元带来卓越音质，支持 LDAC 高品质无线传输。轻量化设计仅重 250g，佩戴舒适。
-          </Typography>
-        </Box>
-
-        {/* Recommendations section */}
-        <Box sx={{ pt: '16px', mt: '16px', borderTop: `1px solid ${COLORS.border}` }}>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              mb: '12px',
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <RecommendIcon sx={{ fontSize: 18, color: COLORS.primary }} />
+        {product.description && (
+          <Box sx={{ pt: '20px', mt: '20px', borderTop: `1px solid ${COLORS.border}` }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px', mb: '10px' }}>
+              <DescriptionIcon sx={{ fontSize: 18, color: COLORS.textPrimary }} />
               <Typography sx={{ fontSize: 14, fontWeight: 600, color: COLORS.textPrimary }}>
-                同类推荐
+                商品描述
               </Typography>
             </Box>
-            <Typography sx={{ fontSize: 12, fontWeight: 500, color: COLORS.primary, cursor: 'pointer' }}>
-              查看更多 →
+            <Typography sx={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>
+              {product.description}
             </Typography>
           </Box>
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-            {RECOMMENDATIONS.map((rec) => {
-              const RecIcon = rec.icon;
-              return (
-                <Box
-                  key={rec.name}
-                  sx={{
-                    borderRadius: '8px',
-                    border: `1px solid ${COLORS.borderLight}`,
-                    bgcolor: COLORS.white,
-                    overflow: 'hidden',
-                    cursor: 'pointer',
-                    '&:hover': { boxShadow: 2 },
-                  }}
-                >
-                  <Box
-                    sx={{
-                      height: 90,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      bgcolor: rec.bg,
-                    }}
-                  >
-                    <RecIcon sx={{ fontSize: 36, color: rec.iconColor }} />
-                  </Box>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px', p: '10px 12px' }}>
-                    <Typography sx={{ fontSize: 12, fontWeight: 600, color: COLORS.textPrimary }}>
-                      {rec.name}
-                    </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <TollIcon sx={{ fontSize: 14, color: COLORS.star }} />
-                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: COLORS.amber }}>
-                        {rec.points} 积分
-                      </Typography>
-                    </Box>
-                  </Box>
-                </Box>
-              );
-            })}
-          </Box>
-        </Box>
+        )}
       </Box>
     </Box>
   );

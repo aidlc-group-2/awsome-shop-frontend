@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -11,18 +10,11 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Chip from '@mui/material/Chip';
 import Avatar from '@mui/material/Avatar';
-import ButtonBase from '@mui/material/ButtonBase';
-import IconButton from '@mui/material/IconButton';
-import Tooltip from '@mui/material/Tooltip';
 import InputBase from '@mui/material/InputBase';
-import AddIcon from '@mui/icons-material/Add';
+import Pagination from '@mui/material/Pagination';
+import Alert from '@mui/material/Alert';
 import SearchIcon from '@mui/icons-material/Search';
-import FilterListIcon from '@mui/icons-material/FilterList';
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
-import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
-import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import { listUsers, type UserDTO } from '../../services/auth';
 
 // Theme colors (from design tokens)
 const C = {
@@ -49,99 +41,65 @@ const C = {
   chipRedText: '#991B1B',
 };
 
-type Role = 'employee' | 'admin';
-type Status = 'active' | 'invited';
+const PAGE_SIZE = 20;
 
-interface Member {
-  id: string;
-  name: string;
-  initial: string;
-  email: string;
-  dept: string;
-  title: string;
-  role: Role;
-  status: Status;
-  joinedAt: string;
-  avatarColor: string;
-}
-
-const MEMBERS: Member[] = [
-  {
-    id: 'EMP-2023056',
-    name: '李婷婷',
-    initial: '李',
-    email: 'litingting@awsome.com',
-    dept: '人力资源部',
-    title: 'HR 经理',
-    role: 'admin',
-    status: 'active',
-    joinedAt: '2023-03-12',
-    avatarColor: C.purple,
-  },
-  {
-    id: 'EMP-2024001',
-    name: '张明辉',
-    initial: '张',
-    email: 'zhangminghui@awsome.com',
-    dept: '技术研发部',
-    title: '高级工程师',
-    role: 'employee',
-    status: 'active',
-    joinedAt: '2024-01-08',
-    avatarColor: C.primary,
-  },
-  {
-    id: 'EMP-2024089',
-    name: '陈思雨',
-    initial: '陈',
-    email: 'chensiyu@awsome.com',
-    dept: '财务部',
-    title: '财务专员',
-    role: 'employee',
-    status: 'active',
-    joinedAt: '2024-06-20',
-    avatarColor: C.success,
-  },
-  {
-    id: 'EMP-2025012',
-    name: '王浩然',
-    initial: '王',
-    email: 'wanghaoran@awsome.com',
-    dept: '市场营销部',
-    title: '市场专员',
-    role: 'employee',
-    status: 'invited',
-    joinedAt: '—',
-    avatarColor: C.amber,
-  },
-];
-
-const ROLE_CONFIG: Record<Role, { label: string; color: string; bg: string }> = {
-  employee: { label: '员工', color: C.chipBlueText, bg: C.chipBlueBg },
-  admin: { label: '管理员', color: C.chipOrangeText, bg: C.chipOrangeBg },
+const ROLE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  EMPLOYEE: { label: '员工', color: C.chipBlueText, bg: C.chipBlueBg },
+  ADMIN: { label: '管理员', color: C.chipOrangeText, bg: C.chipOrangeBg },
 };
 
-const STATUS_CONFIG: Record<Status, { label: string; color: string; bg: string }> = {
-  active: { label: '在职', color: C.chipGreenText, bg: C.chipGreenBg },
-  invited: { label: '待接受邀请', color: C.chipOrangeText, bg: C.chipOrangeBg },
+const statusConfig = (status: string): { label: string; color: string; bg: string } => {
+  const s = status.toUpperCase();
+  if (s === 'ACTIVE' || s === 'ENABLED' || s === 'NORMAL') {
+    return { label: '在职', color: C.chipGreenText, bg: C.chipGreenBg };
+  }
+  if (s === 'DISABLED' || s === 'BANNED' || s === 'LOCKED') {
+    return { label: '已禁用', color: C.chipRedText, bg: C.chipRedBg };
+  }
+  return { label: status, color: C.chipOrangeText, bg: C.chipOrangeBg };
+};
+
+const AVATAR_COLORS = [C.primary, C.purple, C.success, C.amber, C.danger];
+
+const formatDate = (value: string | null): string => {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
 export default function AdminTeam() {
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [records, setRecords] = useState<UserDTO[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
+  const [error, setError] = useState('');
 
-  const filtered = MEMBERS.filter((m) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      m.name.toLowerCase().includes(q) ||
-      m.email.toLowerCase().includes(q) ||
-      m.id.toLowerCase().includes(q)
-    );
-  });
+  useEffect(() => {
+    let cancelled = false;
+    listUsers({ page, size: PAGE_SIZE, username: search.trim() || undefined })
+      .then((res) => {
+        if (cancelled) return;
+        setError('');
+        setRecords(res.records);
+        setTotal(res.total);
+        setPages(Math.max(1, res.pages));
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [page, search]);
 
-  const total = MEMBERS.length;
-  const adminCount = MEMBERS.filter((m) => m.role === 'admin').length;
-  const employeeCount = MEMBERS.filter((m) => m.role === 'employee').length;
+  const adminCount = records.filter((m) => m.role === 'ADMIN').length;
+  const employeeCount = records.filter((m) => m.role === 'EMPLOYEE').length;
+
+  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = (page - 1) * PAGE_SIZE + records.length;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: '20px', p: '32px' }}>
@@ -150,32 +108,14 @@ export default function AdminTeam() {
         <Typography sx={{ fontSize: 24, fontWeight: 700, color: C.textPrimary }}>
           团队成员
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon sx={{ fontSize: 18 }} />}
-          sx={{
-            textTransform: 'none',
-            fontSize: 14,
-            fontWeight: 500,
-            color: C.white,
-            bgcolor: C.primary,
-            borderRadius: '8px',
-            px: '16px',
-            py: '8px',
-            boxShadow: 'none',
-            '&:hover': { bgcolor: '#1D4ED8', boxShadow: 'none' },
-          }}
-        >
-          添加成员
-        </Button>
       </Box>
 
       {/* Stat Cards */}
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
         {[
           { label: '团队总人数', value: String(total), valueColor: C.textPrimary },
-          { label: '管理员', value: String(adminCount), valueColor: C.primary },
-          { label: '普通员工', value: String(employeeCount), valueColor: C.success },
+          { label: '管理员（本页）', value: String(adminCount), valueColor: C.primary },
+          { label: '普通员工（本页）', value: String(employeeCount), valueColor: C.success },
         ].map((stat) => (
           <Paper
             key={stat.label}
@@ -215,34 +155,25 @@ export default function AdminTeam() {
           <SearchIcon sx={{ fontSize: 18, color: C.textSecondary }} />
           <InputBase
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索成员姓名或邮箱..."
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            placeholder="搜索成员用户名..."
             sx={{ fontSize: 13, flexGrow: 1, '& input::placeholder': { color: C.textDisabled, opacity: 1 } }}
           />
-        </Box>
-
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            height: 40,
-            px: '14px',
-            bgcolor: C.white,
-            border: `1px solid ${C.border}`,
-            borderRadius: '8px',
-            cursor: 'pointer',
-          }}
-        >
-          <FilterListIcon sx={{ fontSize: 18, color: C.textSecondary }} />
-          <Typography sx={{ fontSize: 13, color: C.textSecondary }}>全部角色</Typography>
-          <KeyboardArrowDownIcon sx={{ fontSize: 16, color: C.textSecondary }} />
         </Box>
 
         <Typography sx={{ fontSize: 13, color: C.textSecondary, flexGrow: 1 }}>
           共 {total} 位成员
         </Typography>
       </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ borderRadius: '8px' }}>
+          {error}
+        </Alert>
+      )}
 
       {/* Table Card */}
       <Paper
@@ -253,7 +184,7 @@ export default function AdminTeam() {
           <Table sx={{ '& .MuiTableCell-root': { borderColor: C.borderLight } }}>
             <TableHead>
               <TableRow sx={{ bgcolor: C.bgPage }}>
-                {['成员信息', '部门 / 职位', '角色', '加入时间', '状态', '操作'].map((h, i) => (
+                {['成员信息', '邮箱', '角色', '加入时间', '状态'].map((h, i) => (
                   <TableCell
                     key={h}
                     sx={{
@@ -262,7 +193,7 @@ export default function AdminTeam() {
                       color: C.textSecondary,
                       py: '14px',
                       px: '20px',
-                      width: i === 0 ? undefined : [undefined, 160, 110, 120, 110, 100][i],
+                      width: i === 0 ? undefined : [undefined, 220, 110, 120, 110][i],
                     }}
                   >
                     {h}
@@ -271,36 +202,40 @@ export default function AdminTeam() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filtered.map((member) => {
-                const roleCfg = ROLE_CONFIG[member.role];
-                const statusCfg = STATUS_CONFIG[member.status];
+              {records.map((member, idx) => {
+                const roleCfg = ROLE_CONFIG[member.role] ?? ROLE_CONFIG.EMPLOYEE;
+                const statusCfg = statusConfig(member.status);
+                const displayName = member.nickname || member.username;
                 return (
                   <TableRow key={member.id} sx={{ '&:last-child td': { borderBottom: 0 } }}>
                     {/* Member info */}
                     <TableCell sx={{ py: '14px', px: '20px' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <Avatar
-                          sx={{ width: 36, height: 36, bgcolor: member.avatarColor, fontSize: 14, fontWeight: 600 }}
+                          sx={{
+                            width: 36,
+                            height: 36,
+                            bgcolor: AVATAR_COLORS[idx % AVATAR_COLORS.length],
+                            fontSize: 14,
+                            fontWeight: 600,
+                          }}
                         >
-                          {member.initial}
+                          {displayName.charAt(0).toUpperCase()}
                         </Avatar>
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                           <Typography sx={{ fontSize: 13, fontWeight: 500, color: C.textPrimary }}>
-                            {member.name}
+                            {displayName}
                           </Typography>
                           <Typography sx={{ fontSize: 11, color: C.textDisabled }}>
-                            {member.email}
+                            {member.username}
                           </Typography>
                         </Box>
                       </Box>
                     </TableCell>
 
-                    {/* Dept / Title */}
-                    <TableCell sx={{ py: '14px', px: '20px' }}>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <Typography sx={{ fontSize: 13, color: C.textPrimary }}>{member.dept}</Typography>
-                        <Typography sx={{ fontSize: 11, color: C.textSecondary }}>{member.title}</Typography>
-                      </Box>
+                    {/* Email */}
+                    <TableCell sx={{ fontSize: 13, color: C.textPrimary, py: '14px', px: '20px' }}>
+                      {member.email}
                     </TableCell>
 
                     {/* Role */}
@@ -321,7 +256,7 @@ export default function AdminTeam() {
 
                     {/* Joined */}
                     <TableCell sx={{ fontSize: 13, color: C.textPrimary, py: '14px', px: '20px' }}>
-                      {member.joinedAt}
+                      {formatDate(member.createdAt)}
                     </TableCell>
 
                     {/* Status */}
@@ -339,28 +274,12 @@ export default function AdminTeam() {
                         }}
                       />
                     </TableCell>
-
-                    {/* Actions */}
-                    <TableCell sx={{ py: '14px', px: '20px' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Tooltip title="编辑">
-                          <IconButton size="small" sx={{ color: C.textSecondary }}>
-                            <EditOutlinedIcon sx={{ fontSize: 18 }} />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="移除">
-                          <IconButton size="small" sx={{ color: C.danger }}>
-                            <DeleteOutlineIcon sx={{ fontSize: 18 }} />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    </TableCell>
                   </TableRow>
                 );
               })}
-              {filtered.length === 0 && (
+              {records.length === 0 && !error && (
                 <TableRow>
-                  <TableCell colSpan={6} sx={{ py: '40px', textAlign: 'center', borderBottom: 0 }}>
+                  <TableCell colSpan={5} sx={{ py: '40px', textAlign: 'center', borderBottom: 0 }}>
                     <Typography sx={{ fontSize: 13, color: C.textSecondary }}>未找到匹配的成员</Typography>
                   </TableCell>
                 </TableRow>
@@ -381,49 +300,25 @@ export default function AdminTeam() {
           }}
         >
           <Typography sx={{ fontSize: 12, color: C.textSecondary }}>
-            显示 1-{filtered.length} 共 {total} 条
+            显示 {rangeStart}-{rangeEnd} 共 {total} 条
           </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <PagerButton ariaLabel="上一页">
-              <KeyboardArrowLeftIcon sx={{ fontSize: 18, color: C.textSecondary }} />
-            </PagerButton>
-            <PagerButton active>1</PagerButton>
-            <PagerButton ariaLabel="下一页">
-              <KeyboardArrowRightIcon sx={{ fontSize: 18, color: C.textSecondary }} />
-            </PagerButton>
-          </Box>
+          <Pagination
+            count={pages}
+            page={page}
+            onChange={(_, value) => setPage(value)}
+            shape="rounded"
+            size="small"
+            sx={{
+              '& .MuiPaginationItem-root': { fontSize: 12, color: C.textSecondary },
+              '& .MuiPaginationItem-root.Mui-selected': {
+                bgcolor: C.primary,
+                color: C.white,
+                '&:hover': { bgcolor: C.primary },
+              },
+            }}
+          />
         </Box>
       </Paper>
     </Box>
-  );
-}
-
-// Square pagination button (32x32, radius 4)
-function PagerButton({
-  children,
-  active,
-  ariaLabel,
-}: {
-  children: React.ReactNode;
-  active?: boolean;
-  ariaLabel?: string;
-}) {
-  return (
-    <ButtonBase
-      aria-label={ariaLabel}
-      sx={{
-        width: 32,
-        height: 32,
-        borderRadius: '4px',
-        fontSize: 12,
-        fontWeight: active ? 600 : 400,
-        color: active ? C.white : C.textSecondary,
-        bgcolor: active ? C.primary : 'transparent',
-        border: active ? 'none' : `1px solid ${C.border}`,
-        '&:hover': { bgcolor: active ? C.primary : C.bgPage },
-      }}
-    >
-      {children}
-    </ButtonBase>
   );
 }

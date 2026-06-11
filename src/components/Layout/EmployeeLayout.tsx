@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import Box from '@mui/material/Box';
@@ -22,6 +23,10 @@ export default function EmployeeLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
+
+  useEffect(() => {
+    useAuthStore.getState().refreshPoints();
+  }, []);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: '#F8FAFC' }}>

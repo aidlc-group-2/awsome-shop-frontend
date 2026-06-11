@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -12,22 +12,24 @@ import Link from '@mui/material/Link';
 import Dialog from '@mui/material/Dialog';
 import IconButton from '@mui/material/IconButton';
 import ButtonBase from '@mui/material/ButtonBase';
+import Alert from '@mui/material/Alert';
+import Snackbar from '@mui/material/Snackbar';
 import type { SelectChangeEvent } from '@mui/material/Select';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SaveIcon from '@mui/icons-material/Save';
 import CloseIcon from '@mui/icons-material/Close';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
-
-const CATEGORY_OPTIONS = [
-  { value: 'digital', label: '数码电子' },
-  { value: 'life', label: '生活家居' },
-  { value: 'gift', label: '礼品卡券' },
-  { value: 'office', label: '办公用品' },
-];
+import {
+  createProduct,
+  listCategories,
+  type CategoryDTO,
+  type ProductDTO,
+} from '../../services/product';
 
 interface ProductForm {
   name: string;
+  sku: string;
   category: string;
   points: string;
   stock: string;
@@ -37,21 +39,25 @@ interface ProductForm {
 
 const EMPTY_FORM: ProductForm = {
   name: '',
-  category: 'digital',
+  sku: '',
+  category: '',
   points: '',
   stock: '',
   active: true,
   description: '',
 };
 
-const SAMPLE_FORM: ProductForm = {
-  name: 'Sony WH-1000XM5 降噪耳机',
-  category: 'digital',
-  points: '2580',
-  stock: '45',
-  active: true,
-  description:
-    'Sony WH-1000XM5 是索尼旗舰级无线降噪耳机，搭载全新集成处理器 V1 和 8 个麦克风，提供业界领先的降噪效果。30mm 驱动单元带来卓越音质，支持 LDAC 高品质无线传输。',
+/** 把分类树打平成名称列表（一级 + 子级） */
+const flattenCategoryNames = (cats: CategoryDTO[]): string[] => {
+  const names: string[] = [];
+  const walk = (list: CategoryDTO[]) => {
+    list.forEach((c) => {
+      names.push(c.name);
+      if (c.children && c.children.length > 0) walk(c.children);
+    });
+  };
+  walk(cats);
+  return names;
 };
 
 const FIELD_INPUT_SX = {
@@ -71,17 +77,74 @@ export default function AdminEditProduct() {
   const navigate = useNavigate();
   const { id } = useParams();
   const location = useLocation();
+  const stateProduct = (location.state as { product?: ProductDTO } | null)?.product;
 
   const isCreate = !id || location.pathname.endsWith('/new');
+  // 后端暂未提供商品更新接口，编辑模式下整体只读
+  const readOnly = !isCreate;
 
-  const [form, setForm] = useState<ProductForm>(isCreate ? EMPTY_FORM : SAMPLE_FORM);
+  const [form, setForm] = useState<ProductForm>(() => {
+    if (isCreate || !stateProduct) return EMPTY_FORM;
+    return {
+      name: stateProduct.name,
+      sku: stateProduct.sku,
+      category: stateProduct.category,
+      points: String(stateProduct.pointsPrice),
+      stock: String(stateProduct.stock),
+      active: stateProduct.status === 1,
+      description: stateProduct.description ?? '',
+    };
+  });
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [categoryNames, setCategoryNames] = useState<string[]>([]);
+  const [error, setError] = useState('');
+  const [snackbar, setSnackbar] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    listCategories({})
+      .then((cats) => setCategoryNames(flattenCategoryNames(cats)))
+      .catch(() => setCategoryNames([]));
+  }, []);
 
   const updateField = <K extends keyof ProductForm>(key: K, value: ProductForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
   const goBack = () => navigate('/admin/products');
+
+  const handleSubmit = async () => {
+    if (readOnly) return;
+    if (!form.name.trim() || !form.sku.trim() || !form.category || !form.points) {
+      setError('请填写商品名称、SKU、分类和积分价格');
+      return;
+    }
+    setError('');
+    setSubmitting(true);
+    try {
+      await createProduct({
+        name: form.name.trim(),
+        sku: form.sku.trim(),
+        category: form.category,
+        pointsPrice: Number(form.points),
+        stock: form.stock ? Number(form.stock) : undefined,
+        status: form.active ? 1 : 0,
+        description: form.description.trim() || undefined,
+      });
+      setSnackbar('创建成功');
+      window.setTimeout(() => navigate('/admin/products'), 800);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '创建失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // 分类选项：编辑模式下若当前分类不在列表中也要可显示
+  const categoryOptions =
+    form.category && !categoryNames.includes(form.category)
+      ? [form.category, ...categoryNames]
+      : categoryNames;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px', p: '32px' }}>
@@ -128,7 +191,8 @@ export default function AdminEditProduct() {
           <Button
             variant="contained"
             startIcon={<SaveIcon sx={{ fontSize: 18 }} />}
-            onClick={goBack}
+            onClick={handleSubmit}
+            disabled={readOnly || submitting}
             sx={{
               bgcolor: '#2563EB',
               borderRadius: '8px',
@@ -157,6 +221,18 @@ export default function AdminEditProduct() {
         <Typography sx={{ fontSize: 13, color: '#64748B' }}>返回产品列表</Typography>
       </Link>
 
+      {readOnly && (
+        <Alert severity="info" sx={{ borderRadius: '8px' }}>
+          后端暂未提供商品更新接口，当前只读
+        </Alert>
+      )}
+
+      {error && (
+        <Alert severity="error" sx={{ borderRadius: '8px' }} onClose={() => setError('')}>
+          {error}
+        </Alert>
+      )}
+
       {/* Basic Info Card */}
       <Paper
         elevation={0}
@@ -172,7 +248,7 @@ export default function AdminEditProduct() {
         <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#1E293B' }}>基本信息</Typography>
         <Box sx={{ height: '1px', bgcolor: '#F1F5F9' }} />
 
-        {/* Row 1: name + category */}
+        {/* Row 1: name + sku */}
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <Box sx={{ display: 'flex', gap: '2px' }}>
@@ -184,11 +260,31 @@ export default function AdminEditProduct() {
                 value={form.name}
                 onChange={(e) => updateField('name', e.target.value)}
                 placeholder="请输入商品名称"
+                disabled={readOnly}
                 sx={{ flexGrow: 1, fontSize: 14, color: '#1E293B', '& input::placeholder': { color: '#94A3B8', opacity: 1 } }}
               />
             </Box>
           </Box>
 
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <Box sx={{ display: 'flex', gap: '2px' }}>
+              <Typography sx={FIELD_LABEL_SX}>商品编号 (SKU)</Typography>
+              <Typography sx={{ fontSize: 13, color: '#DC2626' }}>*</Typography>
+            </Box>
+            <Box sx={FIELD_INPUT_SX}>
+              <InputBase
+                value={form.sku}
+                onChange={(e) => updateField('sku', e.target.value)}
+                placeholder="请输入商品编号"
+                disabled={readOnly}
+                sx={{ flexGrow: 1, fontSize: 14, color: '#1E293B', '& input::placeholder': { color: '#94A3B8', opacity: 1 } }}
+              />
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Row 2: category */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <Box sx={{ display: 'flex', gap: '2px' }}>
               <Typography sx={FIELD_LABEL_SX}>商品分类</Typography>
@@ -197,6 +293,17 @@ export default function AdminEditProduct() {
             <Select
               value={form.category}
               onChange={(e: SelectChangeEvent) => updateField('category', e.target.value)}
+              displayEmpty
+              disabled={readOnly}
+              renderValue={(selected) =>
+                selected ? (
+                  selected
+                ) : (
+                  <Typography component="span" sx={{ fontSize: 14, color: '#94A3B8' }}>
+                    请选择商品分类
+                  </Typography>
+                )
+              }
               sx={{
                 height: 40,
                 bgcolor: '#FFFFFF',
@@ -208,16 +315,16 @@ export default function AdminEditProduct() {
                 '& .MuiSelect-select': { py: 0, display: 'flex', alignItems: 'center' },
               }}
             >
-              {CATEGORY_OPTIONS.map((opt) => (
-                <MenuItem key={opt.value} value={opt.value} sx={{ fontSize: 14 }}>
-                  {opt.label}
+              {categoryOptions.map((name) => (
+                <MenuItem key={name} value={name} sx={{ fontSize: 14 }}>
+                  {name}
                 </MenuItem>
               ))}
             </Select>
           </Box>
         </Box>
 
-        {/* Row 2: points + stock */}
+        {/* Row 3: points + stock */}
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <Box sx={{ display: 'flex', gap: '2px' }}>
@@ -229,6 +336,7 @@ export default function AdminEditProduct() {
                 value={form.points}
                 onChange={(e) => updateField('points', e.target.value.replace(/[^0-9]/g, ''))}
                 placeholder="0"
+                disabled={readOnly}
                 inputProps={{ inputMode: 'numeric' }}
                 sx={{ flexGrow: 1, fontSize: 14, color: '#1E293B', '& input::placeholder': { color: '#94A3B8', opacity: 1 } }}
               />
@@ -239,13 +347,13 @@ export default function AdminEditProduct() {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <Box sx={{ display: 'flex', gap: '2px' }}>
               <Typography sx={FIELD_LABEL_SX}>库存数量</Typography>
-              <Typography sx={{ fontSize: 13, color: '#DC2626' }}>*</Typography>
             </Box>
             <Box sx={{ ...FIELD_INPUT_SX, justifyContent: 'space-between' }}>
               <InputBase
                 value={form.stock}
                 onChange={(e) => updateField('stock', e.target.value.replace(/[^0-9]/g, ''))}
                 placeholder="0"
+                disabled={readOnly}
                 inputProps={{ inputMode: 'numeric' }}
                 sx={{ flexGrow: 1, fontSize: 14, color: '#1E293B', '& input::placeholder': { color: '#94A3B8', opacity: 1 } }}
               />
@@ -282,6 +390,7 @@ export default function AdminEditProduct() {
             <Switch
               checked={form.active}
               onChange={(e) => updateField('active', e.target.checked)}
+              disabled={readOnly}
               sx={{
                 '& .MuiSwitch-switchBase.Mui-checked': { color: '#FFFFFF' },
                 '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
@@ -321,6 +430,7 @@ export default function AdminEditProduct() {
             placeholder="请输入商品描述..."
             multiline
             minRows={5}
+            disabled={readOnly}
             sx={{
               width: '100%',
               fontSize: 14,
@@ -348,6 +458,7 @@ export default function AdminEditProduct() {
         <Box sx={{ height: '1px', bgcolor: '#F1F5F9' }} />
         <ButtonBase
           onClick={() => setUploadOpen(true)}
+          disabled={readOnly}
           sx={{
             display: 'flex',
             flexDirection: 'column',
@@ -486,6 +597,14 @@ export default function AdminEditProduct() {
           </Button>
         </Box>
       </Dialog>
+
+      <Snackbar
+        open={!!snackbar}
+        autoHideDuration={2000}
+        onClose={() => setSnackbar('')}
+        message={snackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   );
 }

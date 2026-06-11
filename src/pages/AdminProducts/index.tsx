@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -7,177 +7,48 @@ import Paper from '@mui/material/Paper';
 import InputBase from '@mui/material/InputBase';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
+import Pagination from '@mui/material/Pagination';
+import Snackbar from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
 import type { SelectChangeEvent } from '@mui/material/Select';
 import ButtonBase from '@mui/material/ButtonBase';
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import HeadphonesIcon from '@mui/icons-material/Headphones';
-import WatchIcon from '@mui/icons-material/Watch';
-import CardGiftcardIcon from '@mui/icons-material/CardGiftcard';
-import BackpackIcon from '@mui/icons-material/Backpack';
-import KeyboardIcon from '@mui/icons-material/Keyboard';
-import SpeakerIcon from '@mui/icons-material/Speaker';
 import LocalMallIcon from '@mui/icons-material/LocalMall';
-import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
-import type { SvgIconComponent } from '@mui/icons-material';
+import {
+  listProducts,
+  listCategories,
+  type ProductDTO,
+  type CategoryDTO,
+} from '../../services/product';
 
-type ProductStatus = 'active' | 'inactive';
-
-interface Product {
-  id: number;
-  name: string;
-  category: string;
-  categoryLabel: string;
-  categoryColor: string;
-  categoryBg: string;
-  status: ProductStatus;
-  points: string;
-  stock: number;
-  icon: SvgIconComponent;
-  iconColor: string;
-  iconBg: string;
-}
-
-const CATEGORY_OPTIONS = [
-  { value: 'all', label: '全部分类' },
-  { value: 'digital', label: '数码电子' },
-  { value: 'life', label: '生活家居' },
-  { value: 'gift', label: '礼品卡券' },
-  { value: 'office', label: '办公用品' },
-];
+const PAGE_SIZE = 10;
 
 const STATUS_OPTIONS = [
   { value: 'all', label: '全部状态' },
-  { value: 'active', label: '已上架' },
-  { value: 'inactive', label: '已下架' },
+  { value: '1', label: '已上架' },
+  { value: '0', label: '已下架' },
 ];
 
-const STATUS_CONFIG: Record<ProductStatus, { label: string; color: string; bg: string }> = {
-  active: { label: '已上架', color: '#166534', bg: '#DCFCE7' },
-  inactive: { label: '已下架', color: '#DC2626', bg: '#FEE2E2' },
+const STATUS_CONFIG: Record<number, { label: string; color: string; bg: string }> = {
+  1: { label: '已上架', color: '#166534', bg: '#DCFCE7' },
+  0: { label: '已下架', color: '#DC2626', bg: '#FEE2E2' },
 };
 
-const PRODUCTS: Product[] = [
-  {
-    id: 1,
-    name: 'Sony WH-1000XM5 降噪耳机',
-    category: 'digital',
-    categoryLabel: '数码电子',
-    categoryColor: '#2563EB',
-    categoryBg: '#EFF6FF',
-    status: 'active',
-    points: '2,580',
-    stock: 45,
-    icon: HeadphonesIcon,
-    iconColor: '#2563EB',
-    iconBg: '#DBEAFE',
-  },
-  {
-    id: 2,
-    name: 'Apple Watch Series 9',
-    category: 'digital',
-    categoryLabel: '数码电子',
-    categoryColor: '#2563EB',
-    categoryBg: '#EFF6FF',
-    status: 'active',
-    points: '3,200',
-    stock: 28,
-    icon: WatchIcon,
-    iconColor: '#7C3AED',
-    iconBg: '#EDE9FE',
-  },
-  {
-    id: 3,
-    name: '星巴克 200元礼品卡',
-    category: 'gift',
-    categoryLabel: '礼品卡券',
-    categoryColor: '#16A34A',
-    categoryBg: '#F0FDF4',
-    status: 'active',
-    points: '680',
-    stock: 200,
-    icon: CardGiftcardIcon,
-    iconColor: '#16A34A',
-    iconBg: '#DCFCE7',
-  },
-  {
-    id: 4,
-    name: '小米城市通勤双肩包',
-    category: 'life',
-    categoryLabel: '生活家居',
-    categoryColor: '#D97706',
-    categoryBg: '#FEF3C7',
-    status: 'inactive',
-    points: '450',
-    stock: 0,
-    icon: BackpackIcon,
-    iconColor: '#D97706',
-    iconBg: '#FEF3C7',
-  },
-  {
-    id: 5,
-    name: '罗技 MX Keys 无线键盘',
-    category: 'office',
-    categoryLabel: '办公用品',
-    categoryColor: '#2563EB',
-    categoryBg: '#EFF6FF',
-    status: 'active',
-    points: '890',
-    stock: 62,
-    icon: KeyboardIcon,
-    iconColor: '#2563EB',
-    iconBg: '#DBEAFE',
-  },
-  {
-    id: 6,
-    name: 'Bose SoundLink 蓝牙音箱',
-    category: 'digital',
-    categoryLabel: '数码电子',
-    categoryColor: '#2563EB',
-    categoryBg: '#EFF6FF',
-    status: 'active',
-    points: '1,200',
-    stock: 35,
-    icon: SpeakerIcon,
-    iconColor: '#7C3AED',
-    iconBg: '#EDE9FE',
-  },
-  {
-    id: 7,
-    name: '京东 100元购物卡',
-    category: 'gift',
-    categoryLabel: '礼品卡券',
-    categoryColor: '#16A34A',
-    categoryBg: '#F0FDF4',
-    status: 'active',
-    points: '300',
-    stock: 500,
-    icon: LocalMallIcon,
-    iconColor: '#16A34A',
-    iconBg: '#DCFCE7',
-  },
-  {
-    id: 8,
-    name: '飞利浦电动牙刷 HX6856',
-    category: 'life',
-    categoryLabel: '生活家居',
-    categoryColor: '#D97706',
-    categoryBg: '#FEF3C7',
-    status: 'active',
-    points: '520',
-    stock: 78,
-    icon: CleaningServicesIcon,
-    iconColor: '#DB2777',
-    iconBg: '#FCE7F3',
-  },
-];
-
-const PAGES = [1, 2, 3];
-const LAST_PAGE = 16;
+/** 把分类树打平成名称列表（一级 + 子级） */
+const flattenCategoryNames = (cats: CategoryDTO[]): string[] => {
+  const names: string[] = [];
+  const walk = (list: CategoryDTO[]) => {
+    list.forEach((c) => {
+      names.push(c.name);
+      if (c.children && c.children.length > 0) walk(c.children);
+    });
+  };
+  walk(cats);
+  return names;
+};
 
 export default function AdminProducts() {
   const navigate = useNavigate();
@@ -186,20 +57,57 @@ export default function AdminProducts() {
   const [status, setStatus] = useState('all');
   const [page, setPage] = useState(1);
 
+  const [records, setRecords] = useState<ProductDTO[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
+  const [categoryNames, setCategoryNames] = useState<string[]>([]);
+  const [error, setError] = useState('');
+  const [snackbar, setSnackbar] = useState('');
+
+  useEffect(() => {
+    listCategories({})
+      .then((cats) => setCategoryNames(flattenCategoryNames(cats)))
+      .catch(() => setCategoryNames([]));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    listProducts({
+      page,
+      size: PAGE_SIZE,
+      name: search.trim() || undefined,
+      category: category === 'all' ? undefined : category,
+    })
+      .then((res) => {
+        if (cancelled) return;
+        setError('');
+        setRecords(res.records);
+        setTotal(res.total);
+        setPages(Math.max(1, res.pages));
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [page, search, category]);
+
+  // 状态筛选：前端按当前页 status 0/1 过滤
   const filteredProducts = useMemo(
-    () =>
-      PRODUCTS.filter((product) => {
-        const matchesSearch = product.name.toLowerCase().includes(search.trim().toLowerCase());
-        const matchesCategory = category === 'all' || product.category === category;
-        const matchesStatus = status === 'all' || product.status === status;
-        return matchesSearch && matchesCategory && matchesStatus;
-      }),
-    [search, category, status],
+    () => records.filter((p) => status === 'all' || String(p.status) === status),
+    [records, status],
   );
 
   const handleAdd = () => navigate('/admin/products/new');
-  const handleDetail = (id: number) => navigate(`/admin/products/${id}`);
-  const handleEdit = (id: number) => navigate(`/admin/products/${id}/edit`);
+  const handleDetail = (product: ProductDTO) =>
+    navigate(`/admin/products/${product.id}`, { state: { product } });
+  const handleEdit = (product: ProductDTO) =>
+    navigate(`/admin/products/${product.id}/edit`, { state: { product } });
+  const handleDelete = () => setSnackbar('后端暂未提供删除接口');
+
+  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = (page - 1) * PAGE_SIZE + records.length;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: '20px', p: '32px' }}>
@@ -272,9 +180,12 @@ export default function AdminProducts() {
             '& .MuiSelect-select': { py: 0, display: 'flex', alignItems: 'center' },
           }}
         >
-          {CATEGORY_OPTIONS.map((opt) => (
-            <MenuItem key={opt.value} value={opt.value} sx={{ fontSize: 13 }}>
-              {opt.label}
+          <MenuItem value="all" sx={{ fontSize: 13 }}>
+            全部分类
+          </MenuItem>
+          {categoryNames.map((name) => (
+            <MenuItem key={name} value={name} sx={{ fontSize: 13 }}>
+              {name}
             </MenuItem>
           ))}
         </Select>
@@ -284,7 +195,6 @@ export default function AdminProducts() {
           value={status}
           onChange={(e: SelectChangeEvent) => {
             setStatus(e.target.value);
-            setPage(1);
           }}
           sx={{
             height: 40,
@@ -306,20 +216,25 @@ export default function AdminProducts() {
 
         {/* Count */}
         <Typography sx={{ flexGrow: 1, textAlign: 'right', fontSize: 13, color: '#64748B' }}>
-          共 128 件产品
+          共 {total} 件产品
         </Typography>
       </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ borderRadius: '8px' }}>
+          {error}
+        </Alert>
+      )}
 
       {/* Product Card Grid */}
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
         {filteredProducts.map((product) => {
-          const IconComp = product.icon;
-          const statusCfg = STATUS_CONFIG[product.status];
+          const statusCfg = STATUS_CONFIG[product.status] ?? STATUS_CONFIG[0];
           return (
             <Paper
               key={product.id}
               elevation={0}
-              onClick={() => handleDetail(product.id)}
+              onClick={() => handleDetail(product)}
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -335,13 +250,23 @@ export default function AdminProducts() {
               <Box
                 sx={{
                   height: 140,
-                  bgcolor: product.iconBg,
+                  bgcolor: '#EFF6FF',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  overflow: 'hidden',
                 }}
               >
-                <IconComp sx={{ fontSize: 48, color: product.iconColor }} />
+                {product.imageUrl ? (
+                  <Box
+                    component="img"
+                    src={product.imageUrl}
+                    alt={product.name}
+                    sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <LocalMallIcon sx={{ fontSize: 48, color: '#2563EB' }} />
+                )}
               </Box>
 
               {/* Body */}
@@ -364,13 +289,13 @@ export default function AdminProducts() {
                       px: '8px',
                       py: '2px',
                       borderRadius: '10px',
-                      bgcolor: product.categoryBg,
+                      bgcolor: '#EFF6FF',
                       fontSize: 11,
                       fontWeight: 500,
-                      color: product.categoryColor,
+                      color: '#2563EB',
                     }}
                   >
-                    {product.categoryLabel}
+                    {product.category}
                   </Box>
                   <Box
                     sx={{
@@ -388,7 +313,7 @@ export default function AdminProducts() {
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Typography sx={{ fontSize: 15, fontWeight: 700, color: '#D97706' }}>
-                    {product.points} 积分
+                    {product.pointsPrice.toLocaleString()} 积分
                   </Typography>
                   <Typography
                     sx={{
@@ -407,7 +332,7 @@ export default function AdminProducts() {
                 <ButtonBase
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleEdit(product.id);
+                    handleEdit(product);
                   }}
                   sx={{ display: 'flex', alignItems: 'center', gap: '4px', borderRadius: '6px', px: '10px', py: '6px', '&:hover': { bgcolor: '#F1F5F9' } }}
                 >
@@ -415,7 +340,10 @@ export default function AdminProducts() {
                   <Typography sx={{ fontSize: 12, fontWeight: 500, color: '#64748B' }}>编辑</Typography>
                 </ButtonBase>
                 <ButtonBase
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete();
+                  }}
                   sx={{ display: 'flex', alignItems: 'center', gap: '4px', borderRadius: '6px', px: '10px', py: '6px', '&:hover': { bgcolor: '#FEF2F2' } }}
                 >
                   <DeleteOutlineIcon sx={{ fontSize: 16, color: '#DC2626' }} />
@@ -427,62 +355,40 @@ export default function AdminProducts() {
         })}
       </Box>
 
+      {filteredProducts.length === 0 && !error && (
+        <Typography sx={{ fontSize: 13, color: '#64748B', textAlign: 'center', py: '24px' }}>
+          暂无产品数据
+        </Typography>
+      )}
+
       {/* Pagination */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: '8px' }}>
-        <Typography sx={{ fontSize: 13, color: '#64748B' }}>显示 1-8 共 128 件产品</Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <ButtonBase
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            sx={{ width: 32, height: 32, borderRadius: '6px', border: '1px solid #E2E8F0', '&:hover': { bgcolor: '#F8FAFC' } }}
-          >
-            <ChevronLeftIcon sx={{ fontSize: 18, color: '#64748B' }} />
-          </ButtonBase>
-          {PAGES.map((p) => {
-            const isActive = p === page;
-            return (
-              <ButtonBase
-                key={p}
-                onClick={() => setPage(p)}
-                sx={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: '6px',
-                  fontSize: 13,
-                  fontWeight: isActive ? 600 : 400,
-                  color: isActive ? '#FFFFFF' : '#64748B',
-                  bgcolor: isActive ? '#2563EB' : 'transparent',
-                  border: isActive ? 'none' : '1px solid #E2E8F0',
-                  '&:hover': { bgcolor: isActive ? '#2563EB' : '#F8FAFC' },
-                }}
-              >
-                {p}
-              </ButtonBase>
-            );
-          })}
-          <Typography sx={{ fontSize: 13, color: '#64748B', px: '4px' }}>...</Typography>
-          <ButtonBase
-            onClick={() => setPage(LAST_PAGE)}
-            sx={{
-              width: 32,
-              height: 32,
-              borderRadius: '6px',
-              fontSize: 13,
-              color: page === LAST_PAGE ? '#FFFFFF' : '#64748B',
-              bgcolor: page === LAST_PAGE ? '#2563EB' : 'transparent',
-              border: page === LAST_PAGE ? 'none' : '1px solid #E2E8F0',
-              '&:hover': { bgcolor: page === LAST_PAGE ? '#2563EB' : '#F8FAFC' },
-            }}
-          >
-            {LAST_PAGE}
-          </ButtonBase>
-          <ButtonBase
-            onClick={() => setPage((p) => Math.min(LAST_PAGE, p + 1))}
-            sx={{ width: 32, height: 32, borderRadius: '6px', border: '1px solid #E2E8F0', '&:hover': { bgcolor: '#F8FAFC' } }}
-          >
-            <ChevronRightIcon sx={{ fontSize: 18, color: '#64748B' }} />
-          </ButtonBase>
-        </Box>
+        <Typography sx={{ fontSize: 13, color: '#64748B' }}>
+          显示 {rangeStart}-{rangeEnd} 共 {total} 件产品
+        </Typography>
+        <Pagination
+          count={pages}
+          page={page}
+          onChange={(_, value) => setPage(value)}
+          shape="rounded"
+          sx={{
+            '& .MuiPaginationItem-root': { fontSize: 13, color: '#64748B' },
+            '& .MuiPaginationItem-root.Mui-selected': {
+              bgcolor: '#2563EB',
+              color: '#FFFFFF',
+              '&:hover': { bgcolor: '#2563EB' },
+            },
+          }}
+        />
       </Box>
+
+      <Snackbar
+        open={!!snackbar}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar('')}
+        message={snackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   );
 }

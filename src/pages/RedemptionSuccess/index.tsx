@@ -1,4 +1,5 @@
-import { useNavigate } from 'react-router';
+import { useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
@@ -7,14 +8,12 @@ import TollIcon from '@mui/icons-material/Toll';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
+import { useAuthStore } from '../../store/useAuthStore';
+import type { ExchangeRecordDTO } from '../../services/order';
 
-const INFO_ROWS = [
-  { label: '订单编号', value: 'ORD-20260210-00158', color: '#1E293B', weight: 600 },
-  { label: '兑换商品', value: 'Sony WH-1000XM5 降噪耳机', color: '#1E293B', weight: 500 },
-  { label: '扣除积分', value: '2,480 积分', color: '#D97706', weight: 600 },
-  { label: '剩余积分', value: '100 积分', color: '#1E293B', weight: 600 },
-  { label: '预计送达', value: '3-5 个工作日', color: '#1E293B', weight: 500 },
-] as const;
+interface SuccessLocationState {
+  record: ExchangeRecordDTO;
+}
 
 const dividerSx = {
   height: '1px',
@@ -24,6 +23,36 @@ const dividerSx = {
 
 export default function RedemptionSuccess() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const user = useAuthStore((s) => s.user);
+  const state = location.state as SuccessLocationState | null;
+  const record = state?.record;
+
+  useEffect(() => {
+    if (!record) {
+      navigate('/', { replace: true });
+    }
+  }, [record, navigate]);
+
+  if (!record) return null;
+
+  const infoRows = [
+    { label: '订单编号', value: record.orderNo, color: '#1E293B', weight: 600 },
+    { label: '兑换商品', value: record.productName, color: '#1E293B', weight: 500 },
+    {
+      label: '扣除积分',
+      value: `${record.pointsCost.toLocaleString()} 积分`,
+      color: '#D97706',
+      weight: 600,
+    },
+    {
+      label: '剩余积分',
+      value: `${(user?.points ?? 0).toLocaleString()} 积分`,
+      color: '#1E293B',
+      weight: 600,
+    },
+    { label: '兑换时间', value: record.exchangeTime, color: '#1E293B', weight: 500 },
+  ];
 
   return (
     <Box
@@ -83,7 +112,7 @@ export default function RedemptionSuccess() {
           >
             <TollIcon sx={{ fontSize: 18, color: '#D97706' }} />
             <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#D97706' }}>
-              2,580 积分
+              {(user?.points ?? 0).toLocaleString()} 积分
             </Typography>
           </Box>
           <Box
@@ -98,7 +127,7 @@ export default function RedemptionSuccess() {
             }}
           >
             <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#FFFFFF' }}>
-              李
+              {user?.displayName?.charAt(0) ?? ''}
             </Typography>
           </Box>
         </Box>
@@ -179,7 +208,7 @@ export default function RedemptionSuccess() {
               py: '20px',
             }}
           >
-            {INFO_ROWS.map((row) => (
+            {infoRows.map((row) => (
               <Box
                 key={row.label}
                 sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
@@ -199,7 +228,7 @@ export default function RedemptionSuccess() {
             <Button
               variant="contained"
               startIcon={<ReceiptLongIcon sx={{ fontSize: 20 }} />}
-              onClick={() => navigate('/orders')}
+              onClick={() => navigate(`/orders/${record.id}`)}
               sx={{
                 height: 48,
                 borderRadius: '12px',
